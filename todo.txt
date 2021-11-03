@@ -1,0 +1,4 @@
+- GUI(or CUI but very undesired) interface for tests
+- Net interface for receaving opponent actions
+- ai
+- study rappresentation of state, actions, euristics
