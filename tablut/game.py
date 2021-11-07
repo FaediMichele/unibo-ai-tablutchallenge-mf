@@ -11,7 +11,7 @@ king = 2
 
 
 def create_root():
-    board = np.zeros((9, 9))
+    board = np.zeros((9, 9), dtype=np.int8)
     board[3:6, 0] = black
     board[4, 1] = black
     board[4, 7] = black
@@ -39,3 +39,7 @@ def actions(state, player):
     actions = []
     for d in get_piece_positions(state, player):
         actions.append(get_piece_actions(state, d, player))
+
+
+if __name__ == '__main__':
+    pass
