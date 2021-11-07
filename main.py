@@ -1,4 +1,4 @@
+import tablut.board as tab
 
-from mygym import main as gm
-
-print(gm.make("tablut"))
+if __name__ == '__main__':
+    tab.Board().run()
