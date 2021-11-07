@@ -4,10 +4,24 @@ from kivy.uix.button import Button
 from pymitter import EventEmitter
 import numpy as np
 from kivy.clock import Clock
+import os
+package_directory = os.path.dirname(os.path.abspath(__file__))
 
 
 class Board(MDApp):
-    def __init__(self, initial_state=np.zeros((9, 9), dtype=np.int32), icons={"empty_cell": "res/cell_0.png", "empty_cell_1": "res/cell_3.png", "empty_camp": "res/cell_2.png", "empty_castle": "res/cell_4.png", "empty_escapes": "res/cell_1.png", "king_castle": "res/cell_6.png", "black_cell": "res/cell_7.png", "white_cell": "res/cell_8.png", "black_camp": "res/cell_5.png", "king_cell": "res/cell_9.png", "highlight": "res/cell_10.png"}):
+    def __init__(self, initial_state=np.zeros((9, 9), dtype=np.int32), icons={
+            "empty_cell": os.path.join(package_directory, 'res', "cell_0.png"),
+            "empty_cell_1": os.path.join(package_directory, 'res', "cell_3.png"),
+            "empty_camp": os.path.join(package_directory, 'res', "cell_2.png"),
+            "empty_castle": os.path.join(package_directory, 'res', "cell_4.png"),
+            "empty_escapes": os.path.join(package_directory, 'res', "cell_1.png"),
+            "king_castle": os.path.join(package_directory, 'res', "cell_6.png"),
+            "black_cell": os.path.join(package_directory, 'res', "cell_7.png"),
+            "white_cell": os.path.join(package_directory, 'res', "cell_8.png"),
+            "black_camp": os.path.join(package_directory, 'res', "cell_5.png"),
+            "king_cell": os.path.join(package_directory, 'res', "cell_9.png"),
+            "highlight": os.path.join(package_directory, 'res', "cell_10.png")
+    }):
         super().__init__()
         self.event = EventEmitter()
         self.icons = icons
@@ -25,7 +39,6 @@ class Board(MDApp):
                 grid.add_widget(self.cells[-1][-1])
 
         def on_ready(_):
-            print(self.current_state)
             self.select_state(self.current_state)
             self.event.emit("loaded")
         Clock.schedule_once(on_ready, 1)
