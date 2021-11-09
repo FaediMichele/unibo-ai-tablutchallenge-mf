@@ -6,7 +6,6 @@ if __name__ == '__main__':
 
     def cell_pressed(data):
         print(f"cell pressed: {data}")
-        board.select_state(gm.create_root())
 
     def loaded():
         print("Ready")

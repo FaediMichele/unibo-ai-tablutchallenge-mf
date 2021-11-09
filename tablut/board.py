@@ -41,7 +41,7 @@ class Board(MDApp):
         def on_ready(_):
             self.select_state(self.current_state)
             self.event.emit("loaded")
-        Clock.schedule_once(on_ready, 1)
+        Clock.schedule_once(on_ready, 0)
         return grid
 
     def on_btn_pressed(self, val):
