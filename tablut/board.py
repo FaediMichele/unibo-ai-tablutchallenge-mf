@@ -25,7 +25,7 @@ class Board(MDApp):
         super().__init__()
         self.event = EventEmitter()
         self.icons = icons
-        self.current_state = initial_state
+        self.state = initial_state
 
     def build(self):
         grid = GridLayout(cols=9)
@@ -39,7 +39,7 @@ class Board(MDApp):
                 grid.add_widget(self.cells[-1][-1])
 
         def on_ready(_):
-            self.select_state(self.current_state)
+            self.select_state(self.state)
             self.event.emit("loaded")
         Clock.schedule_once(on_ready, 0)
         return grid
@@ -88,7 +88,7 @@ class Board(MDApp):
         raise Exception(f"Cell state not found ({i}, {k}, {val})")
 
     def select_state(self, state):
-        self.current_state = state
+        self.state = state
         for i in range(len(self.cells)):
             for k in range(len(self.cells[i])):
                 self.cells[i][k].background_normal = self.get_img_for_cell(

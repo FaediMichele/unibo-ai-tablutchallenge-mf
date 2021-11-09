@@ -41,5 +41,10 @@ def actions(state, player):
         actions.append(get_piece_actions(state, d, player))
 
 
+def calculate_next_state(state, action):
+    # TODO calculate capture and new state
+    pass
+
+
 if __name__ == '__main__':
     pass
