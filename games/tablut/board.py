@@ -1,3 +1,4 @@
+from games.board import Board as Bd
 from kivymd.app import MDApp
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
@@ -8,7 +9,10 @@ import os
 package_directory = os.path.dirname(os.path.abspath(__file__))
 
 
-class Board(MDApp):
+class Board(Bd, MDApp):
+    ''' Class that contains rules for the Tablut game with user interfaces.
+    If the Gui is not used is suggested to use the base implementation of board(games.board.Board)'''
+
     def __init__(self, initial_state=np.zeros((9, 9), dtype=np.int32), icons={
             "empty_cell": os.path.join(package_directory, 'res', "cell_0.png"),
             "empty_cell_1": os.path.join(package_directory, 'res', "cell_3.png"),
@@ -22,10 +26,8 @@ class Board(MDApp):
             "king_cell": os.path.join(package_directory, 'res', "cell_9.png"),
             "highlight": os.path.join(package_directory, 'res', "cell_10.png")
     }):
-        super().__init__()
-        self.event = EventEmitter()
+        super(Board, self).__init__(initial_state)
         self.icons = icons
-        self.state = initial_state
 
     def build(self):
         grid = GridLayout(cols=9)
@@ -92,12 +94,15 @@ class Board(MDApp):
         for i in range(len(self.cells)):
             for k in range(len(self.cells[i])):
                 self.cells[i][k].background_normal = self.get_img_for_cell(
-                    i, k, state[i, k])
+                    i, k, state[1][i, k])
 
     def highlight_actions(self, state, actions=[]):
         self.select_state(state)
         for a in actions:
             self.cells[a[2]][a[3]].background_normal = self.icons["highlight"]
+
+    def run(self):
+        MDApp.run(self)
 
 
 if __name__ == '__main__':

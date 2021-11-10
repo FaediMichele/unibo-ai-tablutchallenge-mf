@@ -1,1 +1,4 @@
 pymitter
+kivy[base]
+kivymd
+numpy
