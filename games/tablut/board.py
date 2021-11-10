@@ -97,6 +97,7 @@ class Board(Bd, MDApp):
                     i, k, state[1][i, k])
 
     def highlight_actions(self, state, actions=[]):
+        print("hightlighted")
         self.select_state(state)
         for a in actions:
             self.cells[a[2]][a[3]].background_normal = self.icons["highlight"]

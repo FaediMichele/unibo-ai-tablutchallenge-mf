@@ -32,9 +32,10 @@ class Game(Gm):
 
         Keyword arguments:
         state -- the state of the game'''
-        return zip(np.where(
-            state[1] == self.__black if state[0] == "black" else (
-                state[1] == self.__white or state[1] == self.__king)))
+        if state[0] == "black":
+            return zip(np.where(state[1] == self.__black))
+        else:
+            return zip(np.where((state[1] == self.__white) & (state[1] == self.__king)))
 
     def get_piece_actions(self, state, position):
         ''' Returns all the possible action for a specific piece.

@@ -39,7 +39,7 @@ class Remote(Player):
         ''' Parse a server comunication format to an action'''
         pass
 
-    async def next_action_async(self, state, last_action):
+    async def next_action_async(self, last_action):
         action = self.decode(await self.enemy.send(self.encode(last_action)))
         self.board.select_state(calculate_next_state(self.board.state, action))
         self.make_move(action)

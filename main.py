@@ -9,7 +9,7 @@ import numpy as np
 if __name__ == '__main__':
     # if the argument of the program is not passed start a random player
     if len(sys.argv) == 1:
-        if np.randint(0, 1) == 0:
+        if np.random.randint(0, 1) == 0:
             sys.argv.append("black")
             sys.argv.append("white")
         else:
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     def loaded():
         ''' When the board have loaded his state state the first player.
         If the board is a GUI, this function is called on window loaded'''
-        players[0].next_action(board.state, None)
+        players[0].next_action(None)
 
     def make_move(action):
         """ Function that manage the turns between two player"""
@@ -38,7 +38,7 @@ if __name__ == '__main__':
         board.select_state(new_state)
         # players_history[player_turn].append(action)
         player_turn = (player_turn + 1) % len(players)
-        players[player_turn].next_action(new_state, action)
+        players[player_turn].next_action(action)
 
     players.append(RandomPlayer(make_move, board, game, sys.argv[1]))
     players.append(Local(make_move, board, game, sys.argv[2]))
