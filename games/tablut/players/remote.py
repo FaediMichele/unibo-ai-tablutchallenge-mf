@@ -2,17 +2,46 @@ from games.player import Player
 from game import calculate_next_state
 import json
 import asyncio
+import string
 
 
-class __Enemy():
-    ''' Class the encapsulate the send and receive of commands for the remote player/server '''
+class Client():
+    ''' Class the encapsulate the send and receive of commands for the remote player/server.
+    Simple use case:
+    client = Client(("127.0.0.1", 8080))
+    await client.connect()
+    print(f"response: {await cliend.send('hello server')}")
+    await client.close()
+    '''
 
-    def __init__(self, address):
-        super(__Enemy, self).__init__(self)
-        self.data = address
+    def __init__(self, address, buffer_size=1024):
+        ''' Create a new Client TCP
 
-    async def send(self, string):
-        pass
+        Keyword arguments:
+        address -- tuple that contains address, port. For more information see this https://docs.python.org/3/library/asyncio-stream.html#asyncio.open_connection
+        '''
+        super(Client, self).__init__(self)
+        self.address = address
+        self.buffer_size = buffer_size
+
+    async def connect(self):
+        ''' Open the connection to the server '''
+        self.reader, self.writer = await asyncio.open_connection(*self.address)
+
+    async def close(self):
+        ''' Close the connection'''
+        self.writer.close()
+        await self.writer.wait_closed()
+
+    async def send(self, data):
+        ''' Send data and wait for the response 
+
+        Keyword arguments:
+        data -- data to send (don't know if work for non string object)
+        '''
+        self.writer.write(data)
+        await self.writer.drain()
+        return await self.reader.read(self.buffer_size)
 
 
 class Remote(Player):
@@ -29,15 +58,22 @@ class Remote(Player):
         enemy_address -- the data for comunicatin with the remote player ( #TODO yet to be defined )
         '''
         super(Remote, self).__init__(self, make_move, board, game, player)
-        self.enemy = __Enemy(enemy_address)
+        self.enemy = Client(enemy_address)
 
     def encode(self, action):
         ''' Parse an action to the server comunication format'''
-        pass
+        # {"from":"e4","to":"e5","turn":"WHITE"}
+        return json.dumps(
+            {
+                "from": (string.ascii_lowercase[action[0]] + str(action[1])),
+                "to": (string.ascii_lowercase[action[2]] + str(action[3])),
+                "turn": self.board.state[0].upper()
+            })
 
     def decode(self, result):
         ''' Parse a server comunication format to an action'''
-        pass
+        data = json.load(result)
+        return (ord(data["from"][0]) - ord("a"), int(data["from"][1]), ord(data["to"][0]) - ord("a"), int(data["to"][1]))
 
     async def next_action_async(self, last_action):
         action = self.decode(await self.enemy.send(self.encode(last_action)))
@@ -45,4 +81,4 @@ class Remote(Player):
         self.make_move(action)
 
     def next_action(self, last_action):
-        self.next_action_async(self.board.state, last_action)
+        asyncio.run(self.next_action_async(self.board.state, last_action))
