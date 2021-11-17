@@ -29,11 +29,15 @@ class Local(Player):
             self.make_move(action)
         elif self.board.state[1][cell[0]][cell[1]] in self.game.get_player_pieces_values(self.player):
             self.highlighted_actions = self.game.get_piece_actions(
-                cell, self.player)
+                self.board.state, cell)
             self.board.highlight_actions(
                 self.board.state, self.highlighted_actions)
             self.cell_highlighted = [(action[2], action[3])
                                      for action in self.highlighted_actions]
+        else:
+            self.cell_highlighted = []
+            self.highlighted_actions = []
+            self.board.highlight_actions(self.board.state)
 
     def next_action(self, last_action):
         pass

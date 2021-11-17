@@ -33,9 +33,9 @@ class Game(Gm):
         Keyword arguments:
         state -- the state of the game'''
         if state[0] == "black":
-            return list(zip(np.where(state[1] == self.__black)))
+            return list(zip(*np.where(state[1] == self.__black)))
         else:
-            return list(zip(np.where((state[1] == self.__white) & (state[1] == self.__king))))
+            return list(zip(*np.where((state[1] == self.__white) | (state[1] == self.__king))))
 
     def get_piece_actions(self, state, position):
         ''' Returns all the possible action for a specific piece.
@@ -45,18 +45,15 @@ class Game(Gm):
         position -- tuple that contains row and column for a single piece
         '''
         actions = []
-        print("ciao", position)
-        for i in range(0, position[0]):
-            if state[1][i,position[1]] == 0:
-                actions.append(position[0], position[1], i, position[1])
+        for i in range(1, position[0]):
+            if state[1][i, position[1]] == 0:
+                actions.append((position[0], position[1], i, position[1]))
         # TODO define here the game rules
         return actions
 
     def actions(self, state):
         actions = []
-        poses=self.get_piece_positions(state)
-        print("ciao", poses)
-        for d in poses:
+        for d in self.get_piece_positions(state):
             actions.append(self.get_piece_actions(state, d))
         return actions
 
