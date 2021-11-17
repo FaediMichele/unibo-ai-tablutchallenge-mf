@@ -28,4 +28,6 @@ class Player:
         actions = self.game.actions(self.board.state)
         if len(actions) == 0:
             print(f"Draw. The {self.player} can not do any moves")
-        self.make_move(actions[np.random.randint(0, len(actions))])
+            self.make_move(None)
+        else:
+            self.make_move(actions[np.random.randint(0, len(actions))])

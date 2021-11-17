@@ -85,6 +85,8 @@ class Board(Bd, MDApp):
             else:
                 return self.icons["empty_camp"]
         if (i == 0 or i == 8) and (k >= 1 and k <= 2 or k >= 5 and k <= 7) or (k == 0 or k == 8) and (i >= 1 and i <= 2 or i >= 5 and i <= 7):
+            if val > 1:
+                return self.icons["king_cell"]
             return self.icons["empty_escapes"]
 
         raise Exception(f"Cell state not found ({i}, {k}, {val})")
