@@ -5,3 +5,5 @@
 
 example of JSON messages:
 {"from":"e4","to":"e5","turn":"WHITE"}
+
+in vs code remember to select the correct interpreter!

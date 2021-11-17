@@ -23,8 +23,8 @@ if __name__ == '__main__':
     # players_history = [] # history is not used
 
     def cell_pressed(data):
-        print(
-            f"cell pressed: {data}. Is playing the {players[player_turn].player}")
+        pass
+        #print(f"cell pressed: {data}. Is playing the {players[player_turn].player}")
 
     def loaded():
         ''' When the board have loaded his state state the first player.
