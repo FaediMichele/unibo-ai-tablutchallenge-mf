@@ -45,7 +45,7 @@ class Game(Gm):
         position -- tuple that contains row and column for a single piece
         '''
         actions = []
-        for i in range(1, position[0]):
+        for i in reversed(range(1, position[0])):
             if state[1][i, position[1]] == 0:
                 actions.append((position[0], position[1], i, position[1]))
         # TODO define here the game rules
@@ -59,6 +59,12 @@ class Game(Gm):
 
     def result(self, state, action):
         # TODO calculate capture and new state
+
+        # may be wise to disable this check
+        actions = self.get_piece_actions(state, (action[0], action[1]))
+        if action not in actions:
+            raise Exception("Action not allowed", action, actions)
+
         state = ((state[0]+1) % 2, state[1].copy())
         state[1][action[0], action[1]], state[1][action[2], action[3]
                                                  ] = state[1][action[2], action[3]], state[1][action[0], action[1]]
@@ -75,7 +81,11 @@ class Game(Gm):
 
         Keyword arguments:
         state -- the state that is wanted to check'''
-        return True if np.count_nonzero(state[1] == self.king) == 0 else False
+        king_pos = list(zip(*np.where(state[1] == self.king)))
+        if len(king_pos) == 0:
+            return True
+        king_pos = tuple(king_pos[0])
+        return True if min(*king_pos) == 0 or max(*king_pos) == 8 else False
 
     def utility(self, state, player):
         ''' Return the value of this final state to player
@@ -84,7 +94,11 @@ class Game(Gm):
         state -- the state of the game. The current player is ignored
         player -- the player that want to know the value of a final state
         '''
-        return 1 if np.count_nonzero(state[1] == self.king) == 0 else -1
+        king_pos = list(zip(*np.where(state[1] == self.king)))
+        if len(king_pos) == 0:
+            return 1000 if player == "black" else -1000
+        else:
+            return -1000 if player == "black" else 1000
 
     def get_player_pieces_values(self, player):
         ''' Get the type(numerical) of the pieces for a player

@@ -16,9 +16,19 @@ class Board:
         super().__init__()
         self.event = EventEmitter()
         self.state = initial_state
+        self.scheduler = []
 
     def select_state(self, state):
         self.state = state
 
     def run(self):
         self.event.emit("loaded")
+        while len(self.scheduler) > 0:
+            print("Scheduler called")
+            (self.scheduler.pop())()
+
+    def add_manager_function(self, function):
+        self.manager_function = function
+
+    def run_manager_function(self):
+        self.scheduler.append(self.manager_function)

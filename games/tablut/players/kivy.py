@@ -1,8 +1,8 @@
 from games.player import Player
 
 
-class Local(Player):
-    ''' Class for a local player. Is based on a GUI, so if is not present this class may not work.'''
+class Kivy(Player):
+    ''' Class for a player using the kivy interface. In order to use this player the board must be games.tablut.board'''
 
     def __init__(self, make_move, board, game, player):
         ''' Create a local player
@@ -13,7 +13,7 @@ class Local(Player):
         game -- the game rules
         player -- the the player identification. Can be a number or anything else
         '''
-        super(Local, self).__init__(make_move, board, game, player)
+        super(Kivy, self).__init__(make_move, board, game, player)
         self.cell_highlighted = []
         self.highlighted_actions = []
         self.my_turn = False

@@ -107,6 +107,12 @@ class Board(Bd, MDApp):
     def run(self):
         MDApp.run(self)
 
+    def add_manager_function(self, function):
+        self.manager_function = function
+
+    def run_manager_function(self):
+        Clock.schedule_once(lambda _: self.manager_function())
+
 
 if __name__ == '__main__':
     Board().run()
