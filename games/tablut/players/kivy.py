@@ -49,5 +49,5 @@ class Kivy(Player):
             self.board.highlight_actions(self.board.state)
 
     def next_action(self, last_action):
-        print("my turn")
+        print(f"Player {self.player} turn. Last action: {last_action}")
         self.my_turn = True

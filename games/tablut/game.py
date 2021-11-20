@@ -1,6 +1,5 @@
 import numpy as np
 from games.game import Game as Gm
-
 # example action: (start_row_id, start_column_id, dest_row_id, dest_column_id)
 # example state: (player_turn, map)
 
@@ -21,6 +20,10 @@ class Game(Gm):
                               [0,  0,  0,  0,  white,  0,  0,  0,  0],
                               [0,  0,  0,  0, black,  0,  0,  0,  0],
                               [0,  0,  0, black, black, black,  0,  0,  0]])
+    camp_list = [(0, 3), (0, 4), (0, 5), (1, 4), (8, 3), (8, 4), (8, 5),
+                 (7, 4), (3, 0), (4, 0), (5, 0), (4, 1), (3, 8), (4, 8), (5, 8), (4, 7)]
+    escape_list = [(0, 1), (0, 2), (0, 6), (0, 7), (8, 1), (8, 2), (8, 6),
+                   (8, 7), (1, 0), (2, 0), (6, 0), (7, 8), (1, 8), (2, 8), (6, 8), (7, 8)]
     __player_names = {"black": 1, "white": 0}
     __player_pieces_values = {"black": [black], "white": [white, king]}
 
@@ -45,10 +48,46 @@ class Game(Gm):
         position -- tuple that contains row and column for a single piece
         '''
         actions = []
-        for i in reversed(range(1, position[0])):
-            if state[1][i, position[1]] == 0:
-                actions.append((position[0], position[1], i, position[1]))
-        # TODO define here the game rules
+
+        # general piece
+        if state[1][position] != self.king:
+            # compute movement for row
+            if position[1] >= 0 and position[1] <= 8:
+                # from player pos-1 to 0 (inclusive)
+                for i in reversed(range(0, position[0])):
+                    # the action is ok if cell is empty, do not allow camp jump(eg. from left to right camp), go in a camp iff piece is in a camp, don't go in escape cell
+                    if state[1][i, position[1]] != 0 or ((i+1, position[1]) not in self.camp_list and (i, position[1]) in self.camp_list) or ((i, position[1]) in self.camp_list and position not in self.camp_list) or (i, position[1]) in self.escape_list or (i, position[1]) == (4, 4):
+                        break
+                    else:
+                        actions.append(
+                            (position[0], position[1], i, position[1]))
+                # from player pos+1 to 8 (inclusive)
+                for i in range(position[0]+1, 9):
+
+                    if state[1][i, position[1]] != 0 or ((i-1, position[1]) not in self.camp_list and (i, position[1]) in self.camp_list) or ((i, position[1]) in self.camp_list and position not in self.camp_list) or (i, position[1]) in self.escape_list or (i, position[1]) == (4, 4):
+                        break
+                    else:
+                        actions.append(
+                            (position[0], position[1], i, position[1]))
+            # compute movement for column
+            if position[0] >= 0 and position[0] <= 8:
+                for i in reversed(range(0, position[1])):
+                    if state[1][position[0], i] != 0 or ((position[0], i+1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (i, position[1]) == (4, 4):
+                        break
+                    else:
+                        actions.append(
+                            (position[0], position[1], position[0], i))
+                for i in range(position[1]+1, 9):
+                    if state[1][position[0], i] != 0 or ((position[0], i-1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (i, position[1]) == (4, 4):
+                        break
+                    else:
+                        actions.append(
+                            (position[0], position[1], position[0], i))
+        else:  # if king
+            for cardinal in [(position[0]-1, position[1]), (position[0]+1, position[1]), (position[0], position[1]-1), (position[0], position[1]+1)]:
+                # direction is possible if don't exit the grid and don't go in castle
+                if min(cardinal) >= 0 and max(cardinal) <= 8 and state[1][cardinal] == 0 and cardinal != (4, 4) and cardinal not in self.camp_list:
+                    actions.append(position+cardinal)
         return actions
 
     def actions(self, state):
@@ -65,22 +104,46 @@ class Game(Gm):
         if action not in actions:
             raise Exception("Action not allowed", action, actions)
 
-        state = ((state[0]+1) % 2, state[1].copy())
-        state[1][action[0], action[1]], state[1][action[2], action[3]
-                                                 ] = state[1][action[2], action[3]], state[1][action[0], action[1]]
-        return state
+        board = state[1].copy()
 
-    def goal_test(self, state):
-        pass
+        # swap cell
+        board[action[0], action[1]], board[action[2], action[3]
+                                           ] = board[action[2], action[3]], board[action[0], action[1]]
+        # compute the value of the two cells in each cardinal direction
+        directions = []
+        if action[2]-2 >= 0:
+            directions.append(
+                [(action[2]-1, action[3]), (action[2]-2, action[3])])
+        if action[2]+2 <= 8:
+            directions.append(
+                [(action[2]+1, action[3]), (action[2]+2, action[3])])
+        if action[3]-2 >= 0:
+            directions.append(
+                [(action[2], action[3]-1), (action[2], action[3]-2)])
+        if action[3]+2 <= 8:
+            directions.append(
+                [(action[2], action[3]+1), (action[2], action[3]+2)])
 
-    def h(self, node):
-        pass
+        for cardinal in directions:
+            # if king and in castle and sorrounded by 4 sided
+            if board[cardinal[0]] == self.king and cardinal[0] == (4, 4) and board[action[2], action[3]] == self.black and board[cardinal[0][0]-1, cardinal[0][1]] == self.black and board[cardinal[0][0]+1, cardinal[0][1]] == self.black and board[cardinal[0][0], cardinal[0][1]-1] == self.black and board[cardinal[0][0], cardinal[0][1]+1] == self.black:
+                board[cardinal[0]] = 0
+            # if king and in adjacent to the castle and sorrounded by 3 sided
+            elif board[cardinal[0]] == self.king and board[action[2], action[3]] == self.black and cardinal[0] in [(3, 4), (4, 3), (5, 4), (4, 5)] and (board[cardinal[0][0]-1, cardinal[0][1]] == self.black or (cardinal[0][0]-1, cardinal[0][1]) == (4, 4)) and (board[cardinal[0][0]+1, cardinal[0][1]] == self.black or (cardinal[0][0]+1, cardinal[0][1]) == (4, 4)) and (board[cardinal[0][0], cardinal[0][1]-1] == self.black or (cardinal[0][0], cardinal[0][1]-1) == (4, 4)) and (board[cardinal[0][0], cardinal[0][1]+1] == self.black or (cardinal[0][0], cardinal[0][1]+1) == (4, 4)):
+                board[cardinal[0]] = 0
+            # if enemy and near barrier
+            elif cardinal[0] not in self.camp_list and not (board[cardinal[0]] == self.king and board[action[2], action[3]] == self.black and cardinal[0] in [(3, 4), (4, 3), (5, 4), (4, 5), (4, 4)]) and (board[cardinal[0]] != board[action[2], action[3]] and not (board[action[2], action[3]] == self.king and board[cardinal[0]] == self.white or board[action[2], action[3]] == self.white and board[cardinal[0]] == self.king)) and ((board[action[2], action[3]] == board[cardinal[1]] or (board[action[2], action[3]] == self.white and board[cardinal[1]] == self.king or board[action[2], action[3]] == self.king and board[cardinal[1]] == self.white)) or (cardinal[1] == (4, 4) or cardinal[1] in self.camp_list)):
+                board[cardinal[0]] = 0
+
+        return ((state[0]+1) % 2, board)
+
+    def h(self, state, player):
+        num_white = np.count_nonzero(state[1] == self.white)
+        num_black = np.count_nonzero(state[1] == self.black)
+        player_index = -1 if player == "white" else 1
+        return player_index * (num_white - num_black)
 
     def is_terminal(self, state):
-        ''' Return true if a state determine a win or loose
-
-        Keyword arguments:
-        state -- the state that is wanted to check'''
         king_pos = list(zip(*np.where(state[1] == self.king)))
         if len(king_pos) == 0:
             return True
@@ -88,12 +151,6 @@ class Game(Gm):
         return True if min(*king_pos) == 0 or max(*king_pos) == 8 else False
 
     def utility(self, state, player):
-        ''' Return the value of this final state to player
-
-        Keyword arguments:
-        state -- the state of the game. The current player is ignored
-        player -- the player that want to know the value of a final state
-        '''
         king_pos = list(zip(*np.where(state[1] == self.king)))
         if len(king_pos) == 0:
             return 1000 if player == "black" else -1000

@@ -9,15 +9,8 @@ def cutoff_depth(d):
     return lambda game, state, depth: depth > d
 
 
-def heuristic(game, state, player):
-    num_white = np.count_nonzero(state[1] == game.white)
-    num_black = np.count_nonzero(state[1] == game.black)
-    player_index = 1 if player == "white" else -1
-    return player_index * (num_white - num_black)
-
-
 def cache(function):
-    "Like lru_cache(None), but only considers the first argument of function."
+    '''Like lru_cache(None), but only considers the first argument of function.'''
     cache = {}
 
     def wrapped(x, *args):
@@ -31,7 +24,7 @@ def cache(function):
 class MinMax(Player):
     ''' Class for a local player. Is based on a GUI, so if is not present this class may not work.'''
 
-    def __init__(self, make_move, board, game, player, cutoff=cutoff_depth(2), h=heuristic):
+    def __init__(self, make_move, board, game, player, cutoff=cutoff_depth(3), h=None):
         ''' Create a local player
 
         Keyword arguments:
@@ -43,38 +36,39 @@ class MinMax(Player):
         '''
         super(MinMax, self).__init__(make_move, board, game, player)
         self.cutoff = cutoff
-        self.h = h
+        self.h = h if h != None else game.h
 
     def next_action(self, last_action):
         game = self.game
         player = self.player
+        print(player)
 
-        @cache
+        @ cache
         def max_value(state, alpha, beta, depth):
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
             if self.cutoff(game, state, depth):
-                return self.h(game, state, player), None
+                return self.h(state, player), None
 
             v, move = -infty, None
             actions = game.actions(state)
             for a in actions:
                 v2, _ = min_value(game.result(state, a), alpha, beta, depth+1)
-                if v2 > v:
+                if v2 > v or (v2 == v and np.random.randint(0, 2) == 1):
                     v, move = v2, a
                     alpha = max(alpha, v)
                 if v >= beta:
                     return v, move
             return v, move
 
-        @cache
+        @ cache
         def min_value(state, alpha, beta, depth):
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
             if self.cutoff(game, state, depth):
-                return self.h(game, state, player), None
+                return self.h(state, player), None
 
             v, move = +infty, None
             for a in game.actions(state):
@@ -86,6 +80,6 @@ class MinMax(Player):
                     return v, move
             return v, move
         print(
-            f"Player: {self.player} is thinking...(what do you mean the game thinks?)")
+            f"Player: {self.player} is thinking...")
         _, a = max_value(self.board.state, -infty, infty, 0)
         self.make_move(a)

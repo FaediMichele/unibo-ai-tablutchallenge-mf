@@ -1,4 +1,4 @@
-from games.board import Board
+from games.tablut.board import Board
 from games.tablut.game import Game
 from games.tablut.players.console import Console
 from games.tablut.players.kivy import Kivy
@@ -35,15 +35,15 @@ if __name__ == '__main__':
         def player_manager():
             global action_ready
             global player_turn
-
+            print("schedule runned")
             if action_ready != False:
                 new_state = game.result(board.state, action_ready)
                 board.select_state(new_state)
                 # players_history[player_turn].append(action)
-                if game.is_terminal(new_state):
+                player_turn = (player_turn + 1) % len(players)
+                if game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
                     print(f"Player {sys.argv[player_turn+1]} wins")
                     return
-                player_turn = (player_turn + 1) % len(players)
                 action = action_ready
                 action_ready = False
                 players[player_turn].next_action(action)
@@ -57,7 +57,7 @@ if __name__ == '__main__':
         action_ready = action
         board.run_manager_function()
 
-    players.append(Console(make_move, board, game, sys.argv[1]))
+    players.append(Kivy(make_move, board, game, sys.argv[1]))
     players.append(MinMax(make_move, board, game, sys.argv[2]))
     print(players[0].player, players[1].player)
     # players_history.append([])

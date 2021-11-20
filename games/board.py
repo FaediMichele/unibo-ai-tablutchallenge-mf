@@ -1,6 +1,7 @@
 import numpy as np
 from pymitter import EventEmitter
 import os
+import asyncio
 
 package_directory = os.path.dirname(os.path.abspath(__file__))
 
@@ -23,9 +24,14 @@ class Board:
 
     def run(self):
         self.event.emit("loaded")
-        while len(self.scheduler) > 0:
-            print("Scheduler called")
-            (self.scheduler.pop())()
+
+        async def sched():
+            while len(self.scheduler) > 0:
+                print("Scheduler called")
+                co = (self.scheduler.pop())()
+                if asyncio.iscoroutinefunction(co):
+                    await co
+        asyncio.run(sched())
 
     def add_manager_function(self, function):
         self.manager_function = function

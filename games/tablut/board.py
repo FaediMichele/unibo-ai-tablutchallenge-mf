@@ -1,3 +1,4 @@
+import asyncio
 from games.board import Board as Bd
 from kivymd.app import MDApp
 from kivy.uix.gridlayout import GridLayout
@@ -108,10 +109,17 @@ class Board(Bd, MDApp):
         MDApp.run(self)
 
     def add_manager_function(self, function):
-        self.manager_function = function
+        def f(_):
+            Clock.tick()
+            co = function()
+            if asyncio.iscoroutinefunction(co):
+                asyncio.run(co)
+
+        self.manager_function = f
 
     def run_manager_function(self):
-        Clock.schedule_once(lambda _: self.manager_function())
+        print("Add schedule")
+        Clock.schedule_once(self.manager_function, 0.1)
 
 
 if __name__ == '__main__':

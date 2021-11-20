@@ -20,15 +20,21 @@ class Game:
         self.actions(state)."""
         pass
 
-    def goal_test(self, state):
-        """Return True if the state is a goal. The default method compares the
-        state to self.goal or checks for state in self.goal if it is a
-        list, as specified in the constructor. Override this method if
-        checking against a single self.goal is not enough."""
-        if isinstance(self.goal, list):
-            return any(x is state for x in self.goal)
-        else:
-            return state == self.goal
+    def is_terminal(self, state):
+        ''' Return true if a state determine a win or loose
+
+        Keyword arguments:
+        state -- the state that is wanted to check'''
+        pass
+
+    def utility(self, state, player):
+        ''' Return the value of this final state to player
+
+        Keyword arguments:
+        state -- the state of the game. The current player is ignored
+        player -- the player that want to know the value of a final state
+        '''
+        pass
 
     def h(self, node):
         ''' Euristic function'''
@@ -42,6 +48,10 @@ class Game:
         and action. The default method costs 1 for every step in the path."""
         return c + 1
 
-    def get_player_pieces_values(self, state):
-        '''This function return all the type of pieces that a player have in game'''
+    def get_player_pieces_values(self, player):
+        ''' Get the type(numerical) of the pieces for a player
+
+        Keyword arguments:
+        player -- name of the player
+        '''
         pass
