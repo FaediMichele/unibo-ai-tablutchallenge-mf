@@ -1,8 +1,13 @@
 from games.player import Player
-from game import calculate_next_state
 import json
 import asyncio
 import string
+import logging
+
+
+# Dictionary used to encode the current turn in the format
+# wanted by the server
+TURN_ECONDING = {0: 'W', 1: 'B'}
 
 
 class Client():
@@ -20,7 +25,7 @@ class Client():
         Keyword arguments:
         address -- tuple that contains address, port. For more information see this https://docs.python.org/3/library/asyncio-stream.html#asyncio.open_connection
         '''
-        super(Client, self).__init__(self)
+        super(Client, self).__init__()
         self.address = address
         self.buffer_size = buffer_size
 
@@ -34,12 +39,13 @@ class Client():
         await self.writer.wait_closed()
 
     async def send(self, data):
-        ''' Send data and wait for the response 
+        ''' Send data and wait for the response
 
         Keyword arguments:
-        data -- data to send (don't know if work for non string object)
+        data -- data to send
         '''
-        self.writer.write(data)
+        logging.info(f'sending: {data}')
+        self.writer.write(data.encode())
         await self.writer.drain()
         return await self.reader.read(self.buffer_size)
 
@@ -57,8 +63,9 @@ class Remote(Player):
         player -- the the player identification. Can be a number or anything else
         enemy_address -- the data for comunicatin with the remote player ( #TODO yet to be defined )
         '''
-        super(Remote, self).__init__(self, make_move, board, game, player)
+        super(Remote, self).__init__(make_move, board, game, player)
         self.enemy = Client(enemy_address)
+        asyncio.run(self.enemy.connect())
 
     def encode(self, action):
         ''' Parse an action to the server comunication format'''
@@ -67,7 +74,7 @@ class Remote(Player):
             {
                 "from": (string.ascii_lowercase[action[0]] + str(action[1])),
                 "to": (string.ascii_lowercase[action[2]] + str(action[3])),
-                "turn": self.board.state[0].upper()
+                "turn": TURN_ECONDING.get(self.board.state[0], 'W')
             })
 
     def decode(self, result):
@@ -77,8 +84,8 @@ class Remote(Player):
 
     async def next_action_async(self, last_action):
         action = self.decode(await self.enemy.send(self.encode(last_action)))
-        self.board.select_state(calculate_next_state(self.board.state, action))
+        self.board.select_state(self.game.result(self.board.state, action))
         self.make_move(action)
 
     def next_action(self, last_action):
-        asyncio.run(self.next_action_async(self.board.state, last_action))
+        asyncio.run(self.next_action_async(last_action))
