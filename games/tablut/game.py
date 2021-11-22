@@ -34,7 +34,7 @@ class Game(Gm):
         return (player, copy_matrix(self.__empty_board))
 
     def where(self, matrix, condition):
-        return [(i, j) for i in range(len(matrix)) for j in range(len(matrix[i])) if condition(matrix[i][j])]
+        return [(i, j) for i in range(len(matrix)) for j in range(len(matrix[i])) if matrix[i][j] in condition]
 
     def get_piece_positions(self, state):
         ''' Returns a numpy array containing all the piece position for the current player
@@ -42,9 +42,9 @@ class Game(Gm):
         Keyword arguments:
         state -- the state of the game'''
         if state[0] == self.__player_names["black"]:
-            return self.where(state[1], lambda cell: cell == self.black)
+            return self.where(state[1], [self.black])
         else:
-            return self.where(state[1], lambda cell: cell == self.white or cell == self.king)
+            return self.where(state[1], [self.white, self.king])
 
     def get_piece_actions(self, state, position):
         ''' Returns all the possible action for a specific piece.
@@ -78,13 +78,13 @@ class Game(Gm):
             # compute movement for column
             if position[0] >= 0 and position[0] <= 8:
                 for i in reversed(range(0, position[1])):
-                    if state[1][position[0]][i] != 0 or ((position[0], i+1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (i, position[1]) == (4, 4):
+                    if state[1][position[0]][i] != 0 or ((position[0], i+1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (position[0], i) == (4, 4):
                         break
                     else:
                         actions.append(
                             (position[0], position[1], position[0], i))
                 for i in range(position[1]+1, 9):
-                    if state[1][position[0]][i] != 0 or ((position[0], i-1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (i, position[1]) == (4, 4):
+                    if state[1][position[0]][i] != 0 or ((position[0], i-1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (position[0], i) == (4, 4):
                         break
                     else:
                         actions.append(
@@ -144,20 +144,20 @@ class Game(Gm):
         return ((state[0]+1) % 2, board)
 
     def h(self, state, player):
-        num_white = len(self.where(state[1], lambda cell: cell == self.white))
-        num_black = len(self.where(state[1], lambda cell: cell == self.black))
+        num_white = np.count_nonzero(state[1] == self.white)
+        num_black = np.count_nonzero(state[1] == self.black)
         player_index = -1 if player == "white" else 1
         return player_index * (num_white - num_black)
 
     def is_terminal(self, state):
-        king_pos = self.where(state[1], lambda cell: cell == self.king)
+        king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
             return True
         king_pos = tuple(king_pos[0])
         return True if min(*king_pos) == 0 or max(*king_pos) == 8 else False
 
     def utility(self, state, player):
-        king_pos = self.where(state[1], lambda cell: cell == self.king)
+        king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
             return 1000 if player == "black" else -1000
         else:

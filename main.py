@@ -77,10 +77,11 @@ def loaded():
             new_state = game.result(board.state, action_ready)
             board.select_state(new_state)
             # players_history[player_turn].append(action)
-            player_turn = (player_turn + 1) % len(players)
+
             if game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
-                print(f"Player {sys.argv[player_turn+1]} wins")
+                print(f"Player {players[player_turn].player} wins")
                 return
+            player_turn = (player_turn + 1) % len(players)
             action = action_ready
             action_ready = False
             players[player_turn].next_action(action)
@@ -129,10 +130,10 @@ def main_cli():
 
 if __name__ == '__main__':
     # Start a local game
-    #main([('white', Kivy, tuple()), ('black', Kivy, tuple())], boardtype=KivyBoard)
+    # main([('white', Kivy, tuple()), ('black', Kivy, tuple())], boardtype=KivyBoard)
 
     # Start a game against minimax
-    #main([('white', Kivy, tuple()), ('black', MinMax, tuple())], boardtype=KivyBoard)
+    main([('white', Kivy, tuple()), ('black', MinMax, tuple())], boardtype=KivyBoard)
 
     # Start a game from cli arguments
-    main_cli()
+    # main_cli()

@@ -36,7 +36,7 @@ class Game:
         '''
         pass
 
-    def h(self, node):
+    def h(self, state, player):
         ''' Euristic function'''
         pass
 
