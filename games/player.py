@@ -1,4 +1,4 @@
-import numpy as np
+import random
 
 
 class Player:
@@ -30,4 +30,4 @@ class Player:
             print(f"Draw. The {self.player} can not do any moves")
             self.make_move(None)
         else:
-            self.make_move(actions[np.random.randint(0, len(actions))])
+            self.make_move(actions[random.randint(0, len(actions)-1)])

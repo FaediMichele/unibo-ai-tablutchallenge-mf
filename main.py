@@ -1,22 +1,20 @@
+import sys
+from games.tablut.players.remote import Remote
+from games.tablut.players.minmax import MinMax
+from games.player import Player as RandomPlayer
+from games.tablut.players.kivy import Kivy
+from games.tablut.players.console import Console
+from games.tablut.game import Game
+from games.board import Board
+from games.tablut.board import Board as KivyBoard
+from games.player import Player
+import random
+import logging
+from typing import Type
+import argparse
 import os
 os.environ['KIVY_NO_ARGS'] = '1'
 
-import argparse
-from typing import Type
-import logging
-import random
-
-from games.player import Player
-from games.tablut.board import Board as KivyBoard
-from games.board import Board
-from games.tablut.game import Game
-from games.tablut.players.console import Console
-from games.tablut.players.kivy import Kivy
-from games.player import Player as RandomPlayer
-from games.tablut.players.minmax import MinMax
-from games.tablut.players.remote import Remote
-import sys
-import numpy as np
 
 player_turn = 0
 game = None
@@ -29,7 +27,7 @@ TURNS_MAP = {'white': 0, 'black': 1}
 
 
 def main(players_data: list[tuple[str, Type[Player], tuple]],
-         turn: int = 0, boardtype: Type[Board] = KivyBoard):
+         turn: int = 0, boardtype: Type[Board] = Board):
     """Start a game with the given parameters.
 
     `players_data` is the list of players in the following format:
@@ -38,7 +36,7 @@ def main(players_data: list[tuple[str, Type[Player], tuple]],
     """
     global player_turn, game, board, players, action_ready
     player_turn = turn
-
+    print(boardtype)
     game = Game()
     board = boardtype(initial_state=game.create_root(player_turn))
 
@@ -120,6 +118,7 @@ def main_cli():
         turn = TURNS_MAP[parsed_turn]
 
     # Manage player types (TODO manage remote, minimax, etc.) and order
+    print(args.board, args.board is KivyBoard)
     playertype = Kivy if args.board is KivyBoard else Console
     players_ = [('white', playertype, tuple()), ('black', playertype, tuple())]
     if turn:        # If it's black's turn
@@ -130,10 +129,10 @@ def main_cli():
 
 if __name__ == '__main__':
     # Start a local game
-    # main([('white', Kivy, tuple()), ('black', Kivy, tuple())])
+    #main([('white', Kivy, tuple()), ('black', Kivy, tuple())], boardtype=KivyBoard)
 
     # Start a game against minimax
-    # main([('white', Kivy, tuple()), ('black', MinMax, tuple())])
+    #main([('white', Kivy, tuple()), ('black', MinMax, tuple())], boardtype=KivyBoard)
 
     # Start a game from cli arguments
     main_cli()

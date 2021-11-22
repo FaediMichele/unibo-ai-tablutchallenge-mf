@@ -1,4 +1,3 @@
-import numpy as np
 from pymitter import EventEmitter
 import os
 import asyncio
@@ -6,11 +5,15 @@ import asyncio
 package_directory = os.path.dirname(os.path.abspath(__file__))
 
 
+def zeros_matrix(shape):
+    return [[0 for _ in range(shape[1])] for _ in range(shape[0])]
+
+
 class Board:
     ''' Class that represent the environment the player are playing.'''
 
-    def __init__(self, initial_state=np.zeros((9, 9), dtype=np.int32)):
-        ''' Create the board with an initial state 
+    def __init__(self, initial_state=zeros_matrix((9, 9))):
+        ''' Create the board with an initial state
 
         Keyword arguments:
         initial_state -- the initial piece position'''
