@@ -5,18 +5,36 @@ import argparse
 from typing import Type
 import logging
 import random
+import importlib
 
 from games.player import Player
-from games.tablut.board import Board as KivyBoard
+# from games.tablut.board import Board as KivyBoard
 from games.board import Board
 from games.tablut.game import Game
 from games.tablut.players.console import Console
-from games.tablut.players.kivy import Kivy
+# from games.tablut.players.kivy import Kivy
 from games.player import Player as RandomPlayer
 from games.tablut.players.minmax import MinMax
 from games.tablut.players.remote import Remote
 import sys
 import numpy as np
+
+# Workaround for kivy automatic window creation:
+# Kivy would crash instantly in headless mode due to the window
+# creation, hence I protect the imports under these global fields
+# and an init function, that will be called only if kivy is wanted
+Kivy = None
+KivyBoard = None
+
+
+def init_kivy():
+    global Kivy, KivyBoard
+    board_module = importlib.import_module('games.tablut.board')
+    KivyBoard = board_module.Board
+
+    player_module = importlib.import_module('games.tablut.players.kivy')
+    Kivy = player_module.Kivy
+
 
 player_turn = 0
 game = None
@@ -29,7 +47,7 @@ TURNS_MAP = {'white': 0, 'black': 1}
 
 
 def main(players_data: list[tuple[str, Type[Player], tuple]],
-         turn: int = 0, boardtype: Type[Board] = KivyBoard):
+         turn: int = 0, boardtype: Type[Board] = Board):
     """Start a game with the given parameters.
 
     `players_data` is the list of players in the following format:
@@ -101,8 +119,7 @@ def make_move(action):
 def main_cli():
     """Parse command line arguments and start a game using `main`."""
     parser = argparse.ArgumentParser(description='Start a game of tablut')
-    parser.add_argument('-g', '--gui', dest='board', action='store_const',
-                        const=KivyBoard, default=Board,
+    parser.add_argument('-g', '--gui', dest='gui', action='store_true',
                         help='play with or without a gui?')
     parser.add_argument('-s', '--starts', dest='turn', nargs=1,
                         default=['white'],
@@ -113,6 +130,11 @@ def main_cli():
     args = parser.parse_args()
     logging.info(f'CLI arguments {args}')
 
+    if args.gui:
+        init_kivy()
+    else:
+        logging.getLogger().setLevel(logging.INFO)
+
     # Manage first player turn
     parsed_turn, = args.turn
     turn = random.choice((0, 1))
@@ -120,20 +142,24 @@ def main_cli():
         turn = TURNS_MAP[parsed_turn]
 
     # Manage player types (TODO manage remote, minimax, etc.) and order
-    playertype = Kivy if args.board is KivyBoard else Console
+    playertype = Kivy if args.gui else Console
     players_ = [('white', playertype, tuple()), ('black', playertype, tuple())]
     if turn:        # If it's black's turn
         players_.reverse()
 
-    main(players_, boardtype=args.board)
+    main(players_, boardtype=KivyBoard if args.gui else Board)
 
 
 if __name__ == '__main__':
     # Start a local game
-    # main([('white', Kivy, tuple()), ('black', Kivy, tuple())])
+    # init_kivy()
+    # main([('white', Kivy, tuple()), ('black', Kivy, tuple())],
+    #      boardtype=KivyBoard)
 
     # Start a game against minimax
-    # main([('white', Kivy, tuple()), ('black', MinMax, tuple())])
+    # init_kivy()
+    # main([('white', Kivy, tuple()), ('black', MinMax, tuple())],
+    #      boardtype=KivyBoard)
 
     # Start a game from cli arguments
     main_cli()
