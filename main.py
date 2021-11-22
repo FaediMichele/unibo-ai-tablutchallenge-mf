@@ -4,6 +4,7 @@ os.environ['KIVY_NO_ARGS'] = '1'
 import argparse
 from typing import Type
 import logging
+import random
 
 from games.player import Player
 from games.tablut.board import Board as KivyBoard
@@ -23,10 +24,18 @@ players = []
 action_ready = False
 board = False
 
+# Used by argparse to parse cli arguments
+TURNS_MAP = {'white': 0, 'black': 1}
 
-def main(players_data: list[tuple[str, Type[Player]]],
+
+def main(players_data: list[tuple[str, Type[Player], tuple]],
          turn: int = 0, boardtype: Type[Board] = KivyBoard):
-    """Start a game with the given parameters."""
+    """Start a game with the given parameters.
+
+    `players_data` is the list of players in the following format:
+    [(name, PlayerType, (arg1, ...)), ...]
+    The additional arguments will be passed to the player's constructor.
+    """
     global player_turn, game, board, players, action_ready
     player_turn = turn
 
@@ -40,8 +49,8 @@ def main(players_data: list[tuple[str, Type[Player]]],
     # Populate players
     default_arguments = make_move, board, game
 
-    for p_name, p_type in players_data:
-        players.append(p_type(*default_arguments, p_name))
+    for p_name, p_type, params in players_data:
+        players.append(p_type(*default_arguments, p_name, *params))
 
     logging.info(f'players {[p.player for p in players]}')
     # players_history.append([])
@@ -94,17 +103,37 @@ def main_cli():
     parser = argparse.ArgumentParser(description='Start a game of tablut')
     parser.add_argument('-g', '--gui', dest='board', action='store_const',
                         const=KivyBoard, default=Board,
-                        help='Play with or without a gui?')
+                        help='play with or without a gui?')
+    parser.add_argument('-s', '--starts', dest='turn', nargs=1,
+                        default=['white'],
+                        help='the player who shall start. Supported options '
+                              'are: white, black, random. Default behaviour '
+                              'is: white.')
 
     args = parser.parse_args()
     logging.info(f'CLI arguments {args}')
 
-    main([('white', Console), ('black', Console)], boardtype=args.board)
+    # Manage first player turn
+    parsed_turn, = args.turn
+    turn = random.choice((0, 1))
+    if parsed_turn != 'random':
+        turn = TURNS_MAP[parsed_turn]
+
+    # Manage player types (TODO manage remote, minimax, etc.) and order
+    playertype = Kivy if args.board is KivyBoard else Console
+    players_ = [('white', playertype, tuple()), ('black', playertype, tuple())]
+    if turn:        # If it's black's turn
+        players_.reverse()
+
+    main(players_, boardtype=args.board)
 
 
 if __name__ == '__main__':
     # Start a local game
-    # main([('white', Kivy), ('black', Kivy)])
+    # main([('white', Kivy, tuple()), ('black', Kivy, tuple())])
+
+    # Start a game against minimax
+    # main([('white', Kivy, tuple()), ('black', MinMax, tuple())])
 
     # Start a game from cli arguments
     main_cli()
