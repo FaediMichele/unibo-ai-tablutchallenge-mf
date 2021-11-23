@@ -17,11 +17,11 @@ class Console(Player):
 
     def print_board(self, state):
         print("    0  1  2  3  4  5  6  7  8")
-        for k in range(state[1].shape[0]):
+        for k in range(len(state[1])):
             line = chr(ord("a")+k)+"   "
-            for i in range(state[1].shape[1]):
-                line += str(state[1][k, i]) + \
-                    ("  " if state[1][k, i] >= 0 else " ")
+            for i in range(len(state[1][k])):
+                line += str(state[1][k][i]) + \
+                    ("  " if state[1][k][i] >= 0 else " ")
             print(line)
 
     def next_action(self, last_action):

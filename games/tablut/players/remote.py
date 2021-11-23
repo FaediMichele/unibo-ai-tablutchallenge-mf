@@ -83,9 +83,7 @@ class Remote(Player):
         return (ord(data["from"][0]) - ord("a"), int(data["from"][1]), ord(data["to"][0]) - ord("a"), int(data["to"][1]))
 
     async def next_action_async(self, last_action):
-        action = self.decode(await self.enemy.send(self.encode(last_action)))
-        self.board.select_state(self.game.result(self.board.state, action))
-        self.make_move(action)
+        self.make_move(self.decode(await self.enemy.send(self.encode(last_action))))
 
     def next_action(self, last_action):
         asyncio.run(self.next_action_async(last_action))
