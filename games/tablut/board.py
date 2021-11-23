@@ -1,10 +1,9 @@
 import asyncio
-from games.board import Board as Bd
+from games.board import Board as Bd, zeros_matrix
 from kivymd.app import MDApp
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from pymitter import EventEmitter
-import numpy as np
 from kivy.clock import Clock
 import os
 package_directory = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +13,7 @@ class Board(Bd, MDApp):
     ''' Class that contains rules for the Tablut game with user interfaces.
     If the Gui is not used is suggested to use the base implementation of board(games.board.Board)'''
 
-    def __init__(self, initial_state=np.zeros((9, 9), dtype=np.int32), icons={
+    def __init__(self, initial_state=zeros_matrix((9, 9)), icons={
             "empty_cell": os.path.join(package_directory, 'res', "cell_0.png"),
             "empty_cell_1": os.path.join(package_directory, 'res', "cell_3.png"),
             "empty_camp": os.path.join(package_directory, 'res', "cell_2.png"),
@@ -97,7 +96,7 @@ class Board(Bd, MDApp):
         for i in range(len(self.cells)):
             for k in range(len(self.cells[i])):
                 self.cells[i][k].background_normal = self.get_img_for_cell(
-                    i, k, state[1][i, k])
+                    i, k, state[1][i][k])
 
     def highlight_actions(self, state, actions=[]):
         print("hightlighted")

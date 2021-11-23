@@ -1,6 +1,6 @@
 from games.player import Player
 import math
-import numpy as np
+import random
 infty = math.inf
 
 
@@ -14,7 +14,7 @@ def cache(function):
     cache = {}
 
     def wrapped(x, *args):
-        x_hash = x[1].reshape(-1, 1).data.tobytes()
+        x_hash = (x[0], tuple([tuple(x[1][k]) for k in range(len(x[1]))]))
         if x_hash not in cache:
             cache[x_hash] = function(x, *args)
         return cache[x_hash]
@@ -55,7 +55,7 @@ class MinMax(Player):
             actions = game.actions(state)
             for a in actions:
                 v2, _ = min_value(game.result(state, a), alpha, beta, depth+1)
-                if v2 > v or (v2 == v and np.random.randint(0, 2) == 1):
+                if v2 > v or (v2 == v and random.choice((0, 1)) == 1):
                     v, move = v2, a
                     alpha = max(alpha, v)
                 if v >= beta:

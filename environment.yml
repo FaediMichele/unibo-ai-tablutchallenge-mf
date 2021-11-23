@@ -23,7 +23,6 @@ dependencies:
   - libzlib=1.2.11
   - lz4-c=1.9.3
   - mkl=2021.4.0
-  - numpy=1.21.4
   - olefile=0.46
   - openjpeg=2.4.0
   - openssl=3.0.0

@@ -1,23 +1,21 @@
+import sys
+from games.tablut.players.remote import Remote
+from games.tablut.players.minmax import MinMax
+from games.tablut.game import Game
+from games.tablut.players.console import Console
+# from games.tablut.board import Board as KivyBoard
+# from games.tablut.players.kivy import Kivy
+from games.player import Player as RandomPlayer
+from games.board import Board
+from games.player import Player
+import importlib
+import random
+import logging
+from typing import Type
+import argparse
 import os
 os.environ['KIVY_NO_ARGS'] = '1'
 
-import argparse
-from typing import Type
-import logging
-import random
-import importlib
-
-from games.player import Player
-# from games.tablut.board import Board as KivyBoard
-from games.board import Board
-from games.tablut.game import Game
-from games.tablut.players.console import Console
-# from games.tablut.players.kivy import Kivy
-from games.player import Player as RandomPlayer
-from games.tablut.players.minmax import MinMax
-from games.tablut.players.remote import Remote
-import sys
-import numpy as np
 
 # Workaround for kivy automatic window creation:
 # Kivy would crash instantly in headless mode due to the window
@@ -56,7 +54,7 @@ def main(players_data: list[tuple[str, Type[Player], tuple]],
     """
     global player_turn, game, board, players, action_ready
     player_turn = turn
-
+    print(boardtype)
     game = Game()
     board = boardtype(initial_state=game.create_root(player_turn))
 
@@ -97,10 +95,11 @@ def loaded():
             new_state = game.result(board.state, action_ready)
             board.select_state(new_state)
             # players_history[player_turn].append(action)
-            player_turn = (player_turn + 1) % len(players)
+
             if game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
-                print(f"Player {sys.argv[player_turn+1]} wins")
+                print(f"Player {players[player_turn].player} wins")
                 return
+            player_turn = (player_turn + 1) % len(players)
             action = action_ready
             action_ready = False
             players[player_turn].next_action(action)
