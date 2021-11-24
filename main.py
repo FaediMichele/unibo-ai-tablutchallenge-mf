@@ -151,9 +151,9 @@ def main_cli():
 
 if __name__ == '__main__':
     # Start a local game
-    # init_kivy()
-    # main([('white', Kivy, tuple()), ('black', Kivy, tuple())],
-    #      boardtype=KivyBoard)
+    init_kivy()
+    main([('white', Kivy, tuple()), ('black', Remote, (('2.224.241.17', 5800),))],
+         boardtype=KivyBoard)
 
     # Start a game against minimax
     # init_kivy()
@@ -161,4 +161,4 @@ if __name__ == '__main__':
     #      boardtype=KivyBoard)
 
     # Start a game from cli arguments
-    main_cli()
+    # main_cli()
