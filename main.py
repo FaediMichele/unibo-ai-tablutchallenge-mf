@@ -38,7 +38,9 @@ player_turn = 0
 game = None
 players = []
 action_ready = False
+state_ready = False
 board = False
+
 
 # Used by argparse to parse cli arguments
 TURNS_MAP = {'white': 0, 'black': 1}
@@ -52,7 +54,7 @@ def main(players_data: list[tuple[str, Type[Player], tuple]],
     [(name, PlayerType, (arg1, ...)), ...]
     The additional arguments will be passed to the player's constructor.
     """
-    global player_turn, game, board, players, action_ready
+    global player_turn, game, board, players, action_ready, state_ready
     player_turn = turn
     print(boardtype)
     game = Game()
@@ -60,6 +62,7 @@ def main(players_data: list[tuple[str, Type[Player], tuple]],
 
     players = []
     action_ready = False
+    state_ready = False
     # players_history = [] # history is not used
 
     # Populate players
@@ -88,8 +91,7 @@ def loaded():
     If the board is a GUI, this function is called on window loaded'''
 
     def player_manager():
-        global action_ready
-        global player_turn
+        global action_ready, player_turn, state_ready
         print("schedule runned")
         if action_ready:
             new_state = game.result(board.state, action_ready)
@@ -103,15 +105,32 @@ def loaded():
             action = action_ready
             action_ready = False
             players[player_turn].next_action(action)
+        elif state_ready:
+            board.select_state(state_ready)
+            # players_history[player_turn].append(action)
+
+            if game.is_terminal(state_ready) or len(game.actions(state_ready)) == 0:
+                print(f"Player {players[player_turn].player} wins")
+                return
+            player_turn = (player_turn + 1) % len(players)
+            action = action_ready
+            action_ready = False
+            players[player_turn].next_action(action)
 
     board.add_manager_function(player_manager)
     players[0].next_action(None)
 
 
-def make_move(action):
+def make_move(param):
     """ Function that manage the turns between two player"""
-    global action_ready
-    action_ready = action
+    global action_ready, state_ready
+    if type(param[1]) == tuple:
+        action_ready = param
+        state_ready = False
+    else:
+        state_ready = param
+        action_ready = False
+
     board.run_manager_function()
 
 
@@ -152,7 +171,7 @@ def main_cli():
 if __name__ == '__main__':
     # Start a local game
     init_kivy()
-    main([('white', Kivy, tuple()), ('black', Remote, (('2.224.241.17', 5800),))],
+    main([('white', Kivy, tuple()), ('black', Remote, (('127.0.0.1', 5800),))],
          boardtype=KivyBoard)
 
     # Start a game against minimax

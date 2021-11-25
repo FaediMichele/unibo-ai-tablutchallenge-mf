@@ -16,6 +16,12 @@ def msg_prepare(data: str):
     return len(bytes_data).to_bytes(4, byteorder='big') + bytes_data
 
 
+def msg_unpack(data: bytes):
+    # TODO check this function
+    s = data.decode()
+    return "{" + s.split("{")[1]
+
+
 class Client():
     ''' Class the encapsulate the send and receive of commands for the remote player/server.
     Simple use case:
@@ -57,7 +63,7 @@ class Client():
         await self.writer.drain()
 
         if response:
-            return await self.reader.read(self.buffer_size)
+            return msg_unpack(await self.reader.read(self.buffer_size))
 
 
 class Remote(Player):
@@ -83,6 +89,8 @@ class Remote(Player):
         loop.run_until_complete(self.enemy.connect())
         # asyncio.run(self.enemy.connect())
         self._send_name_async()
+        self.map_names = {"EMPTY": 0, "BLACK": game.black,
+                          "WHITE": game.white, "KING": game.king}
 
     async def _send_name(self):
         """Handshake with the server sending the player's name."""
@@ -105,8 +113,18 @@ class Remote(Player):
 
     def decode(self, result):
         ''' Parse a server comunication format to an action'''
+        result = (result.split("{")[1]).decode()
+        print(f"Received data: {result}")
         data = json.load(result)
-        return (ord(data["from"][0]) - ord("a"), int(data["from"][1]), ord(data["to"][0]) - ord("a"), int(data["to"][1]))
+        new_state = []
+        received_state = data["board"]
+        for i in range(len(received_state)):
+            line = []
+            for j in range(len(received_state[i])):
+                line.append(self.map_names[received_state[i][j]])
+            new_state.append(line)
+        print(f"Calculated state: {new_state}")
+        return new_state
 
     async def next_action_async(self, last_action):
         self.make_move(self.decode(await self.enemy.send(self.encode(last_action))))
