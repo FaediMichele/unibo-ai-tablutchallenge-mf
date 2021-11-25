@@ -106,8 +106,8 @@ class Remote(Player):
         # {"from":"e4","to":"e5","turn":"WHITE"}
         return json.dumps(
             {
-                "from": (string.ascii_lowercase[action[0]] + str(action[1]+1)),
-                "to": (string.ascii_lowercase[action[2]] + str(action[3]+1)),
+                "from": (string.ascii_lowercase[action[1]] + str(action[0]+1)),
+                "to": (string.ascii_lowercase[action[3]] + str(action[2]+1)),
                 "turn": TURN_ECONDING.get(self.board.state[0], 'W')
             })
 
