@@ -104,6 +104,9 @@ class Remote(Player):
         """Handshake with the server sending the player's name."""
         await self.enemy.send(f'\"{self.name}\"')
 
+        # Consume first configuration
+        await self.enemy.read()
+
     def _send_name(self):
         """Wrapper on `_send_name`."""
         asyncio.get_event_loop().run_until_complete(self._send_name_async())
