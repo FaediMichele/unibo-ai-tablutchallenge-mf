@@ -18,8 +18,11 @@ def msg_prepare(data: str):
 
 def msg_unpack(data: bytes):
     # TODO check this function
-    print("decode", data[4:])
-    return data[4:].decode()
+    size = int.from_bytes(data[:4], byteorder='big')
+    logging.info(f'Reading size: {data[:4]} = {size}')
+    buf = data[4: 4 + size]
+    logging.info(f"Read decode: {buf}")
+    return buf.decode()
 
 
 class Client():
@@ -51,19 +54,24 @@ class Client():
         self.writer.close()
         await self.writer.wait_closed()
 
-    async def send(self, data, response=True):
+    async def send(self, data):
         ''' Send data and wait for the response.
 
         Keyword arguments:
         data -- data to send
-        response -- wether we should wait for a response or not
         '''
         logging.info(f'sending: {data}')
         self.writer.write(msg_prepare(data))
         await self.writer.drain()
 
-        if response:
-            return msg_unpack(await self.reader.read(self.buffer_size))
+    async def read(self):
+        ret = await self.reader.read(self.buffer_size)
+        # The integer size seem to be sent separately (idk really)
+        # so it will sometimes be received without his message.
+        # In that case, wait for the message and unpack the whole thing.
+        if len(ret) == 4:
+            ret += await self.reader.read(self.buffer_size)
+        return msg_unpack(ret)
 
 
 class Remote(Player):
@@ -88,17 +96,17 @@ class Remote(Player):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.enemy.connect())
         # asyncio.run(self.enemy.connect())
-        self._send_name_async()
+        self._send_name()
         self.map_names = {"EMPTY": 0, "BLACK": game.black,
                           "WHITE": game.white, "KING": game.king}
 
-    async def _send_name(self):
+    async def _send_name_async(self):
         """Handshake with the server sending the player's name."""
-        await self.enemy.send(f'\"{self.name}\"', response=False)
+        await self.enemy.send(f'\"{self.name}\"')
 
-    def _send_name_async(self):
+    def _send_name(self):
         """Wrapper on `_send_name`."""
-        asyncio.get_event_loop().run_until_complete(self._send_name())
+        asyncio.get_event_loop().run_until_complete(self._send_name_async())
         # asyncio.run(self._send_name())
 
     def encode(self, action):
@@ -127,7 +135,15 @@ class Remote(Player):
         return (TURN_ECONDING[data["turn"]], new_state)
 
     async def next_action_async(self, last_action):
-        self.make_move(self.decode(await self.enemy.send(self.encode(last_action))))
+        # First turn, don't send anything and wait for the server's
+        # first state
+        if last_action is not None:
+            # Send and consume server response (an echo of the new state)
+            await self.enemy.send(self.encode(last_action))
+            self.decode(await self.enemy.read())
+
+        # Wait for remote action
+        self.make_move(self.decode(await self.enemy.read()))
 
     def next_action(self, last_action):
         asyncio.get_event_loop().run_until_complete(self.next_action_async(last_action))
