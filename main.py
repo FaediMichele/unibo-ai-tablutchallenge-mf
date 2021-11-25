@@ -124,7 +124,7 @@ def loaded():
 def make_move(param):
     """ Function that manage the turns between two player"""
     global action_ready, state_ready
-    if type(param[1]) == tuple:
+    if type(param[1]) == int:
         action_ready = param
         state_ready = False
     else:

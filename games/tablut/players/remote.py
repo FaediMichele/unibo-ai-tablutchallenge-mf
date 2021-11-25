@@ -7,7 +7,7 @@ import logging
 
 # Dictionary used to encode the current turn in the format
 # wanted by the server
-TURN_ECONDING = {0: 'W', 1: 'B'}
+TURN_ECONDING = {0: 'W', 1: 'B', "WHITE": 0, "BLACK": 1}
 
 
 def msg_prepare(data: str):
@@ -18,8 +18,8 @@ def msg_prepare(data: str):
 
 def msg_unpack(data: bytes):
     # TODO check this function
-    s = data.decode()
-    return "{" + s.split("{")[1]
+    print("decode", data[4:])
+    return data[4:].decode()
 
 
 class Client():
@@ -106,16 +106,15 @@ class Remote(Player):
         # {"from":"e4","to":"e5","turn":"WHITE"}
         return json.dumps(
             {
-                "from": (string.ascii_lowercase[action[0]] + str(action[1])),
-                "to": (string.ascii_lowercase[action[2]] + str(action[3])),
+                "from": (string.ascii_lowercase[action[0]] + str(action[1]+1)),
+                "to": (string.ascii_lowercase[action[2]] + str(action[3]+1)),
                 "turn": TURN_ECONDING.get(self.board.state[0], 'W')
             })
 
     def decode(self, result):
         ''' Parse a server comunication format to an action'''
-        result = (result.split("{")[1]).decode()
         print(f"Received data: {result}")
-        data = json.load(result)
+        data = json.loads(result)
         new_state = []
         received_state = data["board"]
         for i in range(len(received_state)):
@@ -124,7 +123,8 @@ class Remote(Player):
                 line.append(self.map_names[received_state[i][j]])
             new_state.append(line)
         print(f"Calculated state: {new_state}")
-        return new_state
+        print("IM HERE", (TURN_ECONDING[data["turn"]], new_state))
+        return (TURN_ECONDING[data["turn"]], new_state)
 
     async def next_action_async(self, last_action):
         self.make_move(self.decode(await self.enemy.send(self.encode(last_action))))
