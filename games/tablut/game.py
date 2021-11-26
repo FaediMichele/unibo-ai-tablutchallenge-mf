@@ -144,8 +144,12 @@ class Game(Gm):
         return ((state[0]+1) % 2, board)
 
     def h(self, state, player):
-        num_white = np.count_nonzero(state[1] == self.white)
-        num_black = np.count_nonzero(state[1] == self.black)
+        num_white = 0
+        num_black = 0
+        for row in state[1]:
+            num_white += row.count(self.white)
+            num_black += row.count(self.black)
+
         player_index = -1 if player == "white" else 1
         return player_index * (num_white - num_black)
 
