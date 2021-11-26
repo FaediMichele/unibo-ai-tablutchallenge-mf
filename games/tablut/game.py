@@ -147,7 +147,6 @@ class Game(Gm):
         return ((state[0]+1) % 2, board)
 
     def h(self, state, player):
-<<<<<<< HEAD
 
         def distance_sq(p1, p2):
             return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
@@ -165,16 +164,6 @@ class Game(Gm):
                              for p in self.escape_list])
 
         return player_index * (self.weight_soldier * soldier_value - self.weight_king * king_value - self.weight_king_position*king_pos_value)
-=======
-        num_white = 0
-        num_black = 0
-        for row in state[1]:
-            num_white += row.count(self.white)
-            num_black += row.count(self.black)
-
-        player_index = -1 if player == "white" else 1
-        return player_index * (num_white - num_black)
->>>>>>> d2e836c2ed09c1e2afca3656e1772fe3ffb9f2b3
 
     def is_terminal(self, state):
         king_pos = self.where(state[1], [self.king])
