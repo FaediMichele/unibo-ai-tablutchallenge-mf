@@ -1,9 +1,12 @@
 from games.game import Game as Gm
 # example action: (start_row_id, start_column_id, dest_row_id, dest_column_id)
 # example state: (player_turn, map)
+Board = list[list[int]]
+State = tuple[str, Board]
+Action = tuple[int, int, int, int]
 
 
-def copy_matrix(matrix):
+def copy_matrix(matrix: Board):
     return [[matrix[i][j] for j in range(len(matrix[i]))] for i in range(len(matrix))]
 
 
@@ -29,18 +32,19 @@ class Game(Gm):
                    (8, 7), (1, 0), (2, 0), (6, 0), (7, 8), (1, 8), (2, 8), (6, 8), (7, 8)]
     __player_names = {"black": 1, "white": 0}
     __player_pieces_values = {"black": [black], "white": [white, king]}
-    weight_king = 10
-    weight_soldier = 0.1
+
+    weight_king = 5
+    weight_soldier = 10
     weight_king_position = 20
 
-    def create_root(self, player):
+    def create_root(self, player: str) -> Board:
         return (player, copy_matrix(self.__empty_board))
 
-    def where(self, matrix, condition):
+    def where(self, matrix: Board, condition: list[int]) -> list[tuple[int, int]]:
         return [(i, j) for i in range(len(matrix)) for j in range(len(matrix[i])) if matrix[i][j] in condition]
 
-    def get_piece_positions(self, state):
-        ''' Returns a numpy array containing all the piece position for the current player
+    def get_piece_positions(self, state: State) -> list[tuple[int, int]]:
+        ''' Returns an array containing all the piece position for the current player
 
         Keyword arguments:
         state -- the state of the game'''
@@ -49,7 +53,7 @@ class Game(Gm):
         else:
             return self.where(state[1], [self.white, self.king])
 
-    def get_piece_actions(self, state, position):
+    def get_piece_actions(self, state: State, position: tuple[int, int]) -> list[Action]:
         ''' Returns all the possible action for a specific piece.
 
         Keyword arguments:
@@ -99,13 +103,13 @@ class Game(Gm):
                     actions.append(position+cardinal)
         return actions
 
-    def actions(self, state):
+    def actions(self, state: State) -> list[Action]:
         actions = []
         for d in self.get_piece_positions(state):
             actions.extend(self.get_piece_actions(state, d))
         return actions
 
-    def result(self, state, action):
+    def result(self, state: State, action: Action) -> State:
         # TODO calculate capture and new state
 
         # may be wise to disable this check
@@ -146,7 +150,7 @@ class Game(Gm):
 
         return ((state[0]+1) % 2, board)
 
-    def h(self, state, player):
+    def h(self, state: State, player: str) -> float:
 
         def distance_sq(p1, p2):
             return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
@@ -165,21 +169,21 @@ class Game(Gm):
 
         return player_index * (self.weight_soldier * soldier_value - self.weight_king * king_value - self.weight_king_position*king_pos_value)
 
-    def is_terminal(self, state):
+    def is_terminal(self, state: State) -> bool:
         king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
             return True
         king_pos = tuple(king_pos[0])
         return True if min(*king_pos) == 0 or max(*king_pos) == 8 else False
 
-    def utility(self, state, player):
+    def utility(self, state: State, player: str) -> float:
         king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
             return 1000 if player == "black" else -1000
         else:
             return -1000 if player == "black" else 1000
 
-    def get_player_pieces_values(self, player):
+    def get_player_pieces_values(self, player: str) -> list[int]:
         ''' Get the type(numerical) of the pieces for a player
 
         Keyword arguments:

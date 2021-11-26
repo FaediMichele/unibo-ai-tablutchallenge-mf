@@ -1,10 +1,16 @@
 from games.player import Player
 import math
 import random
+from games.board import Board as Bd
+from games.game import Game
+from collections.abc import Callable
 infty = math.inf
+Board = list[list[int]]
+State = tuple[str, Board]
+Action = tuple[int, int, int, int]
 
 
-def cutoff_depth(d):
+def cutoff_depth(d: int):
     """A cutoff function that searches to depth d."""
     return lambda game, state, depth: depth > d
 
@@ -24,7 +30,7 @@ def cache(function):
 class MinMax(Player):
     ''' Class for a local player. Is based on a GUI, so if is not present this class may not work.'''
 
-    def __init__(self, make_move, board, game, player, cutoff=cutoff_depth(2), h=None):
+    def __init__(self, make_move, board: Bd, game: Game, player: str, cutoff=cutoff_depth(2), h: Callable[[State, str], float] = None):
         ''' Create a local player
 
         Keyword arguments:
@@ -38,13 +44,13 @@ class MinMax(Player):
         self.cutoff = cutoff
         self.h = h if h != None else game.h
 
-    def next_action(self, last_action):
+    def next_action(self, last_action: Action):
         game = self.game
         player = self.player
         print(player)
 
         @ cache
-        def max_value(state, alpha, beta, depth):
+        def max_value(state: State, alpha: float, beta: float, depth: int):
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
@@ -63,7 +69,7 @@ class MinMax(Player):
             return v, move
 
         @ cache
-        def min_value(state, alpha, beta, depth):
+        def min_value(state: State, alpha: float, beta: float, depth: int):
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
