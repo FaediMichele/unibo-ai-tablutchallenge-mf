@@ -152,6 +152,14 @@ def main_cli():
                         help='the player who shall start. Supported options '
                               'are: white, black, random. Default behaviour '
                               'is: white.')
+    parser.add_argument('--competition', dest='competition', nargs=2,
+                        default=None,
+                        metavar=('COLOR', 'SERV_ADDRESS'),
+                        help='Launch the tablut engine for the unibo '
+                             'competition. Specify color as white or black '
+                             'and the ip address for the server.')
+
+    comp_ports = {'white': 5800, 'black': 5801}
 
     args = parser.parse_args()
     logging.info(f'CLI arguments {args}')
@@ -173,14 +181,26 @@ def main_cli():
     if turn:        # If it's black's turn
         players_.reverse()
 
+    # Override default players for competition
+    if args.competition is not None:
+        color, address = args.competition
+        if color == 'white':
+            players_ = [
+                ('white', MinMax, tuple()),
+                ('black', Remote, ((address, comp_ports[color]),))]
+        elif color == 'black':
+            players_ = [
+                ('white', Remote, ((address, comp_ports[color]),)),
+                ('black', MinMax, tuple())]
+
     main(players_, boardtype=KivyBoard if args.gui else Board)
 
 
 if __name__ == '__main__':
     # Start a local game
-    init_kivy()
-    main([('white', Kivy, tuple()), ('black', Remote, (('127.0.0.1', 5800),))],
-         boardtype=KivyBoard)
+    # init_kivy()
+    # main([('white', Kivy, tuple()), ('black', Remote, (('127.0.0.1', 5800),))],
+    #      boardtype=KivyBoard)
 
     # Start a game against minimax
     # init_kivy()
@@ -188,4 +208,4 @@ if __name__ == '__main__':
     #      boardtype=KivyBoard)
 
     # Start a game from cli arguments
-    # main_cli()
+    main_cli()
