@@ -171,13 +171,13 @@ def main_cli():
 if __name__ == '__main__':
     # Start a local game
     init_kivy()
-    main([('white', Kivy, tuple()), ('black', Remote, (('127.0.0.1', 5800),))],
-         boardtype=KivyBoard)
+    # main([('white', Kivy, tuple()), ('black', Remote, (('127.0.0.1', 5800),))],
+    #     boardtype=KivyBoard)
 
     # Start a game against minimax
     # init_kivy()
-    # main([('white', Kivy, tuple()), ('black', MinMax, tuple())],
-    #      boardtype=KivyBoard)
+    main([('white', Kivy, tuple()), ('black', MinMax, tuple())],
+         boardtype=KivyBoard)
 
     # Start a game from cli arguments
     # main_cli()

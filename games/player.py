@@ -1,10 +1,12 @@
 import random
+from games.board import Board
+from games.game import Game
 
 
 class Player:
     ''' Player that take random actions '''
 
-    def __init__(self, make_move, board, game, player):
+    def __init__(self, make_move, board: Board, game: Game, player):
         """Create a new player tha play randomly
 
         Keyword arguments:
