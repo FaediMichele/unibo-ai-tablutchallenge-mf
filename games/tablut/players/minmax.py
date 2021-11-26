@@ -55,13 +55,13 @@ class MinMax(Player):
                 return game.utility(state, player), None
 
             if self.cutoff(game, state, depth):
-                return self.h(state, player), None
+                return self.h(state, player, False), None
 
             v, move = -infty, None
             actions = game.actions(state)
             for a in actions:
                 v2, _ = min_value(game.result(state, a), alpha, beta, depth+1)
-                if v2 > v or (v2 == v and random.choice((0, 1)) == 1):
+                if v2 > v:
                     v, move = v2, a
                     alpha = max(alpha, v)
                 if v >= beta:
@@ -74,7 +74,7 @@ class MinMax(Player):
                 return game.utility(state, player), None
 
             if self.cutoff(game, state, depth):
-                return self.h(state, player), None
+                return self.h(state, player, True), None
 
             v, move = +infty, None
             for a in game.actions(state):

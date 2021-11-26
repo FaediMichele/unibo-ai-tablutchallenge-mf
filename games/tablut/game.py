@@ -1,4 +1,5 @@
 from games.game import Game as Gm
+infinity = 1e9
 # example action: (start_row_id, start_column_id, dest_row_id, dest_column_id)
 # example state: (player_turn, map)
 Board = list[list[int]]
@@ -29,13 +30,12 @@ class Game(Gm):
     camp_list = [(0, 3), (0, 4), (0, 5), (1, 4), (8, 3), (8, 4), (8, 5),
                  (7, 4), (3, 0), (4, 0), (5, 0), (4, 1), (3, 8), (4, 8), (5, 8), (4, 7)]
     escape_list = [(0, 1), (0, 2), (0, 6), (0, 7), (8, 1), (8, 2), (8, 6),
-                   (8, 7), (1, 0), (2, 0), (6, 0), (7, 8), (1, 8), (2, 8), (6, 8), (7, 8)]
+                   (8, 7), (1, 0), (2, 0), (6, 0), (7, 0), (1, 8), (2, 8), (6, 8), (7, 8)]
     __player_names = {"black": 1, "white": 0}
     __player_pieces_values = {"black": [black], "white": [white, king]}
-
+    __weight_heuristic = {"black": {"king": 10, "soldier": 1, "king_position": 30},
+                          "white": {"king": 5, "soldier": 10, "king_position": 20}}
     weight_king = 5
-    weight_soldier = 10
-    weight_king_position = 20
 
     def create_root(self, player: str) -> Board:
         return (player, copy_matrix(self.__empty_board))
@@ -150,7 +150,7 @@ class Game(Gm):
 
         return ((state[0]+1) % 2, board)
 
-    def h(self, state: State, player: str) -> float:
+    def h(self, state: State, player: str, min_max: bool) -> float:
 
         def distance_sq(p1, p2):
             return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
@@ -161,13 +161,17 @@ class Game(Gm):
             king_pos[0]-1, king_pos[1]), (king_pos[0]+1, king_pos[1]), (king_pos[0], king_pos[1]-1), (king_pos[0], king_pos[1]+1)]])
 
         player_index = 1 if player == "white" else -1
+        min_max_player = "black" if (player == "white" and not min_max) or (
+            player == "black" and min_max) else "white"
+
         soldier_value = (num_white - num_black)
         king_value = (enemy_adjacent_king if king_pos == (4, 4) else enemy_adjacent_king *
                       4 if king_pos not in [(3, 4), (4, 3), (5, 4), (4, 5)] else enemy_adjacent_king*2)
         king_pos_value = min([distance_sq(king_pos, p)
                              for p in self.escape_list])
-
-        return player_index * (self.weight_soldier * soldier_value - self.weight_king * king_value - self.weight_king_position*king_pos_value)
+        return player_index * (self.__weight_heuristic[min_max_player]["soldier"] * soldier_value
+                               - self.__weight_heuristic[min_max_player]["king"] * king_value -
+                               self.__weight_heuristic[min_max_player]["king_position"] * king_pos_value)
 
     def is_terminal(self, state: State) -> bool:
         king_pos = self.where(state[1], [self.king])
@@ -179,9 +183,12 @@ class Game(Gm):
     def utility(self, state: State, player: str) -> float:
         king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
-            return 1000 if player == "black" else -1000
+            v = infinity if player == "black" else -infinity
         else:
-            return -1000 if player == "black" else 1000
+            v = -infinity if player == "black" else infinity
+        print(
+            f"Final State reached: player: {player}, value: {v}, (king_pos: {king_pos})")
+        return v
 
     def get_player_pieces_values(self, player: str) -> list[int]:
         ''' Get the type(numerical) of the pieces for a player
