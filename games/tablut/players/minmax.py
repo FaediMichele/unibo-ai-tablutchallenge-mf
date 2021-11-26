@@ -24,7 +24,7 @@ def cache(function):
 class MinMax(Player):
     ''' Class for a local player. Is based on a GUI, so if is not present this class may not work.'''
 
-    def __init__(self, make_move, board, game, player, cutoff=cutoff_depth(3), h=None):
+    def __init__(self, make_move, board, game, player, cutoff=cutoff_depth(2), h=None):
         ''' Create a local player
 
         Keyword arguments:

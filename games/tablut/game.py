@@ -29,6 +29,9 @@ class Game(Gm):
                    (8, 7), (1, 0), (2, 0), (6, 0), (7, 8), (1, 8), (2, 8), (6, 8), (7, 8)]
     __player_names = {"black": 1, "white": 0}
     __player_pieces_values = {"black": [black], "white": [white, king]}
+    weight_king = 10
+    weight_soldier = 0.1
+    weight_king_position = 20
 
     def create_root(self, player):
         return (player, copy_matrix(self.__empty_board))
@@ -144,10 +147,23 @@ class Game(Gm):
         return ((state[0]+1) % 2, board)
 
     def h(self, state, player):
-        num_white = np.count_nonzero(state[1] == self.white)
-        num_black = np.count_nonzero(state[1] == self.black)
-        player_index = -1 if player == "white" else 1
-        return player_index * (num_white - num_black)
+
+        def distance_sq(p1, p2):
+            return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
+        num_white = len(self.where(state[1], [self.white]))
+        num_black = len(self.where(state[1], [self.black]))
+        king_pos = self.where(state[1], [self.king])[0]
+        enemy_adjacent_king = sum([1 if state[1][around_king[0]][around_king[1]] == self.black else 0 for around_king in [(
+            king_pos[0]-1, king_pos[1]), (king_pos[0]+1, king_pos[1]), (king_pos[0], king_pos[1]-1), (king_pos[0], king_pos[1]+1)]])
+
+        player_index = 1 if player == "white" else -1
+        soldier_value = (num_white - num_black)
+        king_value = (enemy_adjacent_king if king_pos == (4, 4) else enemy_adjacent_king *
+                      4 if king_pos not in [(3, 4), (4, 3), (5, 4), (4, 5)] else enemy_adjacent_king*2)
+        king_pos_value = min([distance_sq(king_pos, p)
+                             for p in self.escape_list])
+
+        return player_index * (self.weight_soldier * soldier_value - self.weight_king * king_value - self.weight_king_position*king_pos_value)
 
     def is_terminal(self, state):
         king_pos = self.where(state[1], [self.king])
