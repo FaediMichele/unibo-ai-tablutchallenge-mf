@@ -1,7 +1,7 @@
 from games.player import Player
 import json
-import asyncio
 import string
+import socket
 import logging
 
 
@@ -43,34 +43,33 @@ class Client():
         super(Client, self).__init__()
         self.address = address
         self.buffer_size = buffer_size
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    async def connect(self):
+    def connect(self):
         ''' Open the connection to the server '''
-        self.reader, self.writer = await asyncio.open_connection(*self.address)
-        logging.info(f'Connected, {self.reader}, {self.writer}')
+        self.socket.connect(self.address)
+        logging.info(f'Connected, {self.socket}')
 
-    async def close(self):
+    def close(self):
         ''' Close the connection'''
-        self.writer.close()
-        await self.writer.wait_closed()
+        self.socket.close()
 
-    async def send(self, data):
+    def send(self, data):
         ''' Send data and wait for the response.
 
         Keyword arguments:
         data -- data to send
         '''
         logging.info(f'sending: {data}')
-        self.writer.write(msg_prepare(data))
-        await self.writer.drain()
+        self.socket.sendall(msg_prepare(data))
 
-    async def read(self):
-        ret = await self.reader.read(self.buffer_size)
+    def read(self):
+        ret = self.socket.recv(self.buffer_size)
         # The integer size seem to be sent separately (idk really)
         # so it will sometimes be received without his message.
         # In that case, wait for the message and unpack the whole thing.
         if len(ret) == 4:
-            ret += await self.reader.read(self.buffer_size)
+            ret += self.socket.recv(self.buffer_size)
         return msg_unpack(ret)
 
 
@@ -93,25 +92,18 @@ class Remote(Player):
 
         self.name = name or str(player)
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.enemy.connect())
-        # asyncio.run(self.enemy.connect())
+        self.enemy.connect()
         self._send_name()
         self.map_names = {"EMPTY": 0, "BLACK": game.black,
                           "WHITE": game.white, "KING": game.king,
                           "THRONE": 0}
 
-    async def _send_name_async(self):
+    def _send_name(self):
         """Handshake with the server sending the player's name."""
-        await self.enemy.send(f'\"{self.name}\"')
+        self.enemy.send(f'\"{self.name}\"')
 
         # Consume first configuration
-        await self.enemy.read()
-
-    def _send_name(self):
-        """Wrapper on `_send_name`."""
-        asyncio.get_event_loop().run_until_complete(self._send_name_async())
-        # asyncio.run(self._send_name())
+        self.enemy.read()
 
     def encode(self, action):
         ''' Parse an action to the server comunication format'''
@@ -138,27 +130,18 @@ class Remote(Player):
         print("IM HERE", (TURN_ECONDING[data["turn"]], new_state))
         return (TURN_ECONDING[data["turn"]], new_state)
 
-    async def next_action_async(self, last_action):
+    def next_action(self, last_action):
         # First turn, don't send anything and wait for the server's
         # first state
         if last_action is not None:
             # Send and consume server response (an echo of the new state)
-            await self.enemy.send(self.encode(last_action))
-            self.decode(await self.enemy.read())
+            self.enemy.send(self.encode(last_action))
+            self.decode(self.enemy.read())
 
         # Wait for remote action
-        self.make_move(self.decode(await self.enemy.read()))
-
-    def next_action(self, last_action):
-        asyncio.get_event_loop().run_until_complete(self.next_action_async(last_action))
-        # asyncio.run(self.next_action_async(last_action))
-
-    async def win_async(self, last_action):
-        """Notify the winning move to the server."""
-        logging.info('Sending winning move')
-        await self.enemy.send(self.encode(last_action))
+        self.make_move(self.decode(self.enemy.read()))
 
     def end(self, last_action, winning):
-        """Notify the winning move to the server, synchronous."""
-        asyncio.get_event_loop().run_until_complete(
-            self.win_async(last_action))
+        """Notify the winning move to the server."""
+        logging.info('Sending winning move')
+        self.enemy.send(self.encode(last_action))
