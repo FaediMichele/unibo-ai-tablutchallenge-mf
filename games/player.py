@@ -1,4 +1,5 @@
 import random
+import logging
 
 
 class Player:
@@ -20,7 +21,7 @@ class Player:
         super(Player, self).__init__()
 
     def next_action(self, last_action):
-        ''' Function called when the opponent take the move and now is the turn of this player 
+        ''' Function called when the opponent take the move and now is the turn of this player
 
         Keyword arguments:
         last_action -- the last move that the opponent have take
@@ -31,3 +32,11 @@ class Player:
             self.make_move(None)
         else:
             self.make_move(actions[random.randint(0, len(actions)-1)])
+
+    def end(self, last_action, winning):
+        """Called when a player wins.
+
+        last_action -- the winning move
+        winning -- the winning player
+        """
+        logging.info(f'Calling win on {self.player}, winning: {winning}')

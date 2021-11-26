@@ -99,6 +99,10 @@ def loaded():
             # players_history[player_turn].append(action)
 
             if game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
+                players[player_turn].end(
+                    action_ready, players[player_turn].player)
+                players[1 - player_turn].end(
+                    action_ready, players[player_turn].player)
                 print(f"Player {players[player_turn].player} wins")
                 return
             player_turn = (player_turn + 1) % len(players)
@@ -110,6 +114,10 @@ def loaded():
             # players_history[player_turn].append(action)
 
             if game.is_terminal(state_ready) or len(game.actions(state_ready)) == 0:
+                players[player_turn].end(
+                    action_ready, players[player_turn].player)
+                players[1 - player_turn].end(
+                    action_ready, players[player_turn].player)
                 print(f"Player {players[player_turn].player} wins")
                 return
             player_turn = (player_turn + 1) % len(players)
