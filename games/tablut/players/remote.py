@@ -98,7 +98,8 @@ class Remote(Player):
         # asyncio.run(self.enemy.connect())
         self._send_name()
         self.map_names = {"EMPTY": 0, "BLACK": game.black,
-                          "WHITE": game.white, "KING": game.king}
+                          "WHITE": game.white, "KING": game.king,
+                          "THRONE": 0}
 
     async def _send_name_async(self):
         """Handshake with the server sending the player's name."""
