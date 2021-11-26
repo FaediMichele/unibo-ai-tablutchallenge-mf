@@ -1,12 +1,17 @@
 import random
 from games.board import Board
 from games.game import Game
+import logging
+from collections.abc import Callable
+from typing import Union
+State = tuple[str, list[list[int]]]
+Action = tuple[int, int, int, int]
 
 
 class Player:
     ''' Player that take random actions '''
 
-    def __init__(self, make_move, board: Board, game: Game, player):
+    def __init__(self, make_move: Callable[[Union[None, State, Action]], None], board: Board, game: Game, player: str):
         """Create a new player tha play randomly
 
         Keyword arguments:
@@ -21,8 +26,8 @@ class Player:
         self.player = player
         super(Player, self).__init__()
 
-    def next_action(self, last_action):
-        ''' Function called when the opponent take the move and now is the turn of this player 
+    def next_action(self, last_action: Action):
+        ''' Function called when the opponent take the move and now is the turn of this player
 
         Keyword arguments:
         last_action -- the last move that the opponent have take
@@ -33,3 +38,11 @@ class Player:
             self.make_move(None)
         else:
             self.make_move(actions[random.randint(0, len(actions)-1)])
+
+    def end(self, last_action: Action, winning: str):
+        """Called when a player wins.
+
+        last_action -- the winning move
+        winning -- the winning player
+        """
+        logging.info(f'Calling win on {self.player}, winning: {winning}')

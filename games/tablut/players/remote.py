@@ -152,3 +152,13 @@ class Remote(Player):
     def next_action(self, last_action):
         asyncio.get_event_loop().run_until_complete(self.next_action_async(last_action))
         # asyncio.run(self.next_action_async(last_action))
+
+    async def win_async(self, last_action):
+        """Notify the winning move to the server."""
+        logging.info('Sending winning move')
+        await self.enemy.send(self.encode(last_action))
+
+    def end(self, last_action, winning):
+        """Notify the winning move to the server, synchronous."""
+        asyncio.get_event_loop().run_until_complete(
+            self.win_async(last_action))
