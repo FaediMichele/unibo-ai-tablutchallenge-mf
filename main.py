@@ -155,9 +155,9 @@ def main_cli():
                         help='the player who shall start. Supported options '
                               'are: white, black, random. Default behaviour '
                               'is: white.')
-    parser.add_argument('--competition', dest='competition', nargs=2,
+    parser.add_argument('--competition', dest='competition', nargs=3,
                         default=None,
-                        metavar=('COLOR', 'SERV_ADDRESS'),
+                        metavar=('COLOR', 'TIMEOUT', 'SERV_ADDRESS'),
                         help='Launch the tablut engine for the unibo '
                              'competition. Specify color as white or black '
                              'and the ip address for the server.')
@@ -186,7 +186,8 @@ def main_cli():
 
     # Override default players for competition
     if args.competition is not None:
-        color, address = args.competition
+        color, timeout, address = args.competition
+        color = color.lower()
         if color == 'white':
             players_ = [
                 ('white', MinMax, (cutoff_depth(3),)),
