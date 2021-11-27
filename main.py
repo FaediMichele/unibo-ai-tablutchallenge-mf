@@ -188,14 +188,15 @@ def main_cli():
     if args.competition is not None:
         color, timeout, address = args.competition
         color = color.lower()
+        timeout = int(timeout)
         if color == 'white':
             players_ = [
-                ('white', MinMax, (cutoff_depth(3),)),
+                ('white', MinMax, (timeout,)),
                 ('black', Remote, ((address, comp_ports[color]), TEAM_NAME))]
         elif color == 'black':
             players_ = [
                 ('white', Remote, ((address, comp_ports[color]), TEAM_NAME)),
-                ('black', MinMax, (cutoff_depth(3),))]
+                ('black', MinMax, (timeout,))]
 
     main(players_, boardtype=KivyBoard if args.gui else Board)
 

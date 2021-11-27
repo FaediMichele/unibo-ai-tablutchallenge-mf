@@ -1,3 +1,6 @@
+import logging
+from threading import Thread, Event
+
 from games.player import Player
 import math
 import random
@@ -16,11 +19,12 @@ def cutoff_depth(d: int):
 
 
 def cache(function):
-    '''Like lru_cache(None), but only considers the first argument of function.'''
+    '''Like lru_cache(None), but only considers the first and last argument.'''
     cache = {}
 
     def wrapped(x, *args):
-        x_hash = (x[0], tuple([tuple(x[1][k]) for k in range(len(x[1]))]))
+        x_hash = (x[0], tuple([tuple(x[1][k]) for k in range(len(x[1]))]),
+                  args[2])
         if x_hash not in cache:
             cache[x_hash] = function(x, *args)
         return cache[x_hash]
@@ -28,9 +32,9 @@ def cache(function):
 
 
 class MinMax(Player):
-    ''' Class for a local player. Is based on a GUI, so if is not present this class may not work.'''
+    '''Automatic player that uses a minimax pruned algorithm.'''
 
-    def __init__(self, make_move, board: Bd, game: Game, player: str, cutoff=cutoff_depth(3), h: Callable[[State, str], float] = None):
+    def __init__(self, make_move, board: Bd, game: Game, player: str, timeout: int, h: Callable[[State, str], float] = None):
         ''' Create a local player
 
         Keyword arguments:
@@ -38,13 +42,59 @@ class MinMax(Player):
         board -- the board of the game. Represent the state of the game.
         game -- the game rules
         player -- the player identification. Can be a number or anything else
-        max_depth -- the max depth for the min max tree
+        timeout -- the max time allowed for each move
         '''
+        if timeout <= 5:
+            raise ValueError('Timeout should be higher than 5')
+
+        logging.info(f'MinMax timeout {timeout}')
+
         super(MinMax, self).__init__(make_move, board, game, player)
-        self.cutoff = cutoff
+        self.timeout = timeout
+        self.timeout_event = Event()
+        self.cached_moves = []
         self.h = h if h != None else game.h
 
     def next_action(self, last_action: Action):
+        """Start a monitored thread for the next action."""
+        self.cached_moves.clear()
+        self.timeout_event.clear()
+
+        thread = Thread(
+            target=self._iterative_deepening,
+            args=(last_action,))
+
+        thread.start()
+
+        # Wait for the thread
+        thread.join(self.timeout - 5)
+
+        logging.info(f'Timeout triggered')
+
+        # Kill the thread
+        self.timeout_event.set()
+
+        # Make last cached move
+        self.make_move(self.cached_moves[-1])
+
+
+    def _iterative_deepening(self, last_action: Action):
+        """Perform interative deepening."""
+        try:
+            depth = 1
+            while True:
+                self._next_action_cutoff(last_action, cutoff_depth(depth))
+                depth += 1
+        except TimeoutError:
+            return
+
+
+    def _next_action_cutoff(self, last_action: Action, cutoff: Callable[Game, State, int]):
+        """Calculate and cache the best action with the given cutoff.
+
+        This function is used internally for iterative deepening. The
+        result is cached in the list `cached_moves`.
+        """
         game = self.game
         player = self.player
         print(player)
@@ -54,7 +104,7 @@ class MinMax(Player):
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
-            if self.cutoff(game, state, depth):
+            if cutoff(game, state, depth):
                 return self.h(state, player, False), None
 
             v, move = -infty, None
@@ -70,10 +120,13 @@ class MinMax(Player):
 
         @ cache
         def max_value(state: State, alpha: float, beta: float, depth: int):
+            if self.timeout_event.is_set():
+                raise TimeoutError
+
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
-            if self.cutoff(game, state, depth):
+            if cutoff(game, state, depth):
                 return self.h(state, player, False), None
 
             v, move = -infty, None
@@ -89,10 +142,13 @@ class MinMax(Player):
 
         @ cache
         def min_value(state: State, alpha: float, beta: float, depth: int):
+            if self.timeout_event.is_set():
+                raise TimeoutError
+
             if game.is_terminal(state):
                 return game.utility(state, player), None
 
-            if self.cutoff(game, state, depth):
+            if cutoff(game, state, depth):
                 return self.h(state, player, True), None
 
             v, move = +infty, None
@@ -107,4 +163,4 @@ class MinMax(Player):
         print(
             f"Player: {self.player} is thinking...")
         _, a = max_value_root(self.board.state, -infty, infty, 0)
-        self.make_move(a)
+        self.cached_moves.append(a)
