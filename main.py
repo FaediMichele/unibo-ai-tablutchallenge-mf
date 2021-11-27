@@ -1,6 +1,6 @@
 import sys
 from games.tablut.players.remote import Remote
-from games.tablut.players.minmax import MinMax
+from games.tablut.players.minmax import MinMax, cutoff_depth
 from games.tablut.game import Game
 from games.tablut.players.console import Console
 # from games.tablut.board import Board as KivyBoard
@@ -15,6 +15,9 @@ from typing import Type
 import argparse
 import os
 os.environ['KIVY_NO_ARGS'] = '1'
+
+
+TEAM_NAME = 'The clairvoyants of the North'
 
 
 # Workaround for kivy automatic window creation:
@@ -152,9 +155,9 @@ def main_cli():
                         help='the player who shall start. Supported options '
                               'are: white, black, random. Default behaviour '
                               'is: white.')
-    parser.add_argument('--competition', dest='competition', nargs=2,
+    parser.add_argument('--competition', dest='competition', nargs=3,
                         default=None,
-                        metavar=('COLOR', 'SERV_ADDRESS'),
+                        metavar=('COLOR', 'TIMEOUT', 'SERV_ADDRESS'),
                         help='Launch the tablut engine for the unibo '
                              'competition. Specify color as white or black '
                              'and the ip address for the server.')
@@ -183,15 +186,16 @@ def main_cli():
 
     # Override default players for competition
     if args.competition is not None:
-        color, address = args.competition
+        color, timeout, address = args.competition
+        color = color.lower()
         if color == 'white':
             players_ = [
-                ('white', MinMax, tuple()),
-                ('black', Remote, ((address, comp_ports[color]),))]
+                ('white', MinMax, (cutoff_depth(3),)),
+                ('black', Remote, ((address, comp_ports[color]), TEAM_NAME))]
         elif color == 'black':
             players_ = [
-                ('white', Remote, ((address, comp_ports[color]),)),
-                ('black', MinMax, tuple())]
+                ('white', Remote, ((address, comp_ports[color]), TEAM_NAME)),
+                ('black', MinMax, (cutoff_depth(3),))]
 
     main(players_, boardtype=KivyBoard if args.gui else Board)
 
