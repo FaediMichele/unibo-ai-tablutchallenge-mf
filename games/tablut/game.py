@@ -1,3 +1,5 @@
+import copy
+
 from games.game import Game as Gm
 infinity = int(1e9)
 # example action: (start_row_id, start_column_id, dest_row_id, dest_column_id)
@@ -8,7 +10,7 @@ Action = tuple[int, int, int, int]
 
 
 def copy_matrix(matrix: Board):
-    return [[matrix[i][j] for j in range(len(matrix[i]))] for i in range(len(matrix))]
+    return copy.deepcopy(matrix)
 
 
 class Game(Gm):
@@ -162,9 +164,6 @@ class Game(Gm):
         return ((state[0]+1) % 2, board)
 
     def h(self, state: State, player: str, min_max: bool) -> float:
-
-        def distance_sq(p1, p2):
-            return (p1[0]-p2[0])**2 + (p1[1]-p2[1])**2
         num_white = len(self.where(state[1], [self.white]))
         num_black = len(self.where(state[1], [self.black]))
         king_pos = self.where(state[1], [self.king])[0]
