@@ -1,5 +1,5 @@
 from games.game import Game as Gm
-infinity = 1e9
+infinity = int(1e9)
 # example action: (start_row_id, start_column_id, dest_row_id, dest_column_id)
 # example state: (player_turn, map)
 Board = list[list[int]]
@@ -27,6 +27,17 @@ class Game(Gm):
                      [0,  0,  0,  0,  white,  0,  0,  0,  0],
                      [0,  0,  0,  0, black,  0,  0,  0,  0],
                      [0,  0,  0, black, black, black,  0,  0,  0]]
+
+    __distance_from_excapes = [[0, 0, 0, 1, 2, 1, 0, 0, 0],
+                               [0, 1, 1, 2, 3, 2, 1, 1, 0],
+                               [0, 1, 2, 3, 4, 3, 2, 1, 0],
+                               [1, 2, 3, 4, 5, 4, 3, 2, 1],
+                               [2, 3, 4, 5, 6, 5, 4, 3, 2],
+                               [1, 2, 3, 4, 5, 4, 3, 2, 1],
+                               [0, 1, 2, 3, 4, 3, 2, 1, 0],
+                               [0, 1, 1, 2, 3, 2, 1, 1, 0],
+                               [0, 0, 0, 1, 2, 1, 0, 0, 0]]
+
     camp_list = [(0, 3), (0, 4), (0, 5), (1, 4), (8, 3), (8, 4), (8, 5),
                  (7, 4), (3, 0), (4, 0), (5, 0), (4, 1), (3, 8), (4, 8), (5, 8), (4, 7)]
     escape_list = [(0, 1), (0, 2), (0, 6), (0, 7), (8, 1), (8, 2), (8, 6),
@@ -167,8 +178,8 @@ class Game(Gm):
         soldier_value = (num_white - num_black)
         king_value = (enemy_adjacent_king if king_pos == (4, 4) else enemy_adjacent_king *
                       4 if king_pos not in [(3, 4), (4, 3), (5, 4), (4, 5)] else enemy_adjacent_king*2)
-        king_pos_value = min([distance_sq(king_pos, p)
-                             for p in self.escape_list])
+        king_pos_value = self.__distance_from_excapes[king_pos[0]][king_pos[1]]
+
         return player_index * (self.__weight_heuristic[min_max_player]["soldier"] * soldier_value
                                - self.__weight_heuristic[min_max_player]["king"] * king_value -
                                self.__weight_heuristic[min_max_player]["king_position"] * king_pos_value)

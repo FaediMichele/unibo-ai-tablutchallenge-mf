@@ -30,7 +30,7 @@ def cache(function):
 class MinMax(Player):
     ''' Class for a local player. Is based on a GUI, so if is not present this class may not work.'''
 
-    def __init__(self, make_move, board: Bd, game: Game, player: str, cutoff=cutoff_depth(2), h: Callable[[State, str], float] = None):
+    def __init__(self, make_move, board: Bd, game: Game, player: str, cutoff=cutoff_depth(3), h: Callable[[State, str], float] = None):
         ''' Create a local player
 
         Keyword arguments:
@@ -48,6 +48,25 @@ class MinMax(Player):
         game = self.game
         player = self.player
         print(player)
+
+        @ cache
+        def max_value_root(state: State, alpha: float, beta: float, depth: int):
+            if game.is_terminal(state):
+                return game.utility(state, player), None
+
+            if self.cutoff(game, state, depth):
+                return self.h(state, player, False), None
+
+            v, move = -infty, None
+            actions = game.actions(state)
+            for a in actions:
+                v2, _ = min_value(game.result(state, a), alpha, beta, depth+1)
+                if v2 > v:
+                    v, move = v2, a
+                    alpha = max(alpha, v)
+                if v >= beta:
+                    return v, move
+            return v, move
 
         @ cache
         def max_value(state: State, alpha: float, beta: float, depth: int):
@@ -87,5 +106,5 @@ class MinMax(Player):
             return v, move
         print(
             f"Player: {self.player} is thinking...")
-        _, a = max_value(self.board.state, -infty, infty, 0)
+        _, a = max_value_root(self.board.state, -infty, infty, 0)
         self.make_move(a)
