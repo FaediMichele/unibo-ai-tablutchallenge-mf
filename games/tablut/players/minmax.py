@@ -77,7 +77,6 @@ class MinMax(Player):
         # Make last cached move
         self.make_move(self.cached_moves[-1])
 
-
     def _iterative_deepening(self, last_action: Action):
         """Perform interative deepening."""
         try:
@@ -88,7 +87,6 @@ class MinMax(Player):
         except TimeoutError:
             return
 
-
     def _next_action_cutoff(self, last_action: Action, cutoff: Callable[Game, State, int]):
         """Calculate and cache the best action with the given cutoff.
 
@@ -96,16 +94,16 @@ class MinMax(Player):
         result is cached in the list `cached_moves`.
         """
         game = self.game
-        player = self.player
-        print(player)
+        player_id = self.board.state[0]
+        print(player_id)
 
         @ cache
         def max_value_root(state: State, alpha: float, beta: float, depth: int):
             if game.is_terminal(state):
-                return game.utility(state, player), None
+                return game.utility(state, player_id), None
 
             if cutoff(game, state, depth):
-                return self.h(state, player, False), None
+                return self.h(state, player_id, False), None
 
             v, move = -infty, None
             actions = game.actions(state)
@@ -124,10 +122,10 @@ class MinMax(Player):
                 raise TimeoutError
 
             if game.is_terminal(state):
-                return game.utility(state, player), None
+                return game.utility(state, player_id), None
 
             if cutoff(game, state, depth):
-                return self.h(state, player, False), None
+                return self.h(state, player_id, False), None
 
             v, move = -infty, None
             actions = game.actions(state)
@@ -146,10 +144,10 @@ class MinMax(Player):
                 raise TimeoutError
 
             if game.is_terminal(state):
-                return game.utility(state, player), None
+                return game.utility(state, player_id), None
 
             if cutoff(game, state, depth):
-                return self.h(state, player, True), None
+                return self.h(state, player_id, True), None
 
             v, move = +infty, None
             for a in game.actions(state):

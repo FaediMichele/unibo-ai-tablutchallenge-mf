@@ -44,10 +44,9 @@ class Game(Gm):
                  (7, 4), (3, 0), (4, 0), (5, 0), (4, 1), (3, 8), (4, 8), (5, 8), (4, 7)]
     escape_list = [(0, 1), (0, 2), (0, 6), (0, 7), (8, 1), (8, 2), (8, 6),
                    (8, 7), (1, 0), (2, 0), (6, 0), (7, 0), (1, 8), (2, 8), (6, 8), (7, 8)]
-    __player_names = {"black": 1, "white": 0}
     __player_pieces_values = {"black": [black], "white": [white, king]}
-    __weight_heuristic = {"black": {"king": 10, "soldier": 1, "king_position": 30},
-                          "white": {"king": 5, "soldier": 10, "king_position": 20}}
+    __weight_heuristic = {1: {"king": 10, "soldier": 1, "king_position": 30},
+                          0: {"king": 5, "soldier": 10, "king_position": 20}}
     weight_king = 5
 
     def create_root(self, player: str) -> Board:
@@ -61,7 +60,7 @@ class Game(Gm):
 
         Keyword arguments:
         state -- the state of the game'''
-        if state[0] == self.__player_names["black"]:
+        if state[0] == 1:
             return self.where(state[1], [self.black])
         else:
             return self.where(state[1], [self.white, self.king])
@@ -163,16 +162,15 @@ class Game(Gm):
 
         return ((state[0]+1) % 2, board)
 
-    def h(self, state: State, player: str, min_max: bool) -> float:
+    def h(self, state: State, player: int, min_max: bool) -> float:
         num_white = len(self.where(state[1], [self.white]))
         num_black = len(self.where(state[1], [self.black]))
         king_pos = self.where(state[1], [self.king])[0]
         enemy_adjacent_king = sum([1 if state[1][around_king[0]][around_king[1]] == self.black else 0 for around_king in [(
             king_pos[0]-1, king_pos[1]), (king_pos[0]+1, king_pos[1]), (king_pos[0], king_pos[1]-1), (king_pos[0], king_pos[1]+1)]])
-
-        player_index = 1 if player == "white" else -1
-        min_max_player = "black" if (player == "white" and not min_max) or (
-            player == "black" and min_max) else "white"
+        player_index = -2*player+1  # 1 if player == 0 else -1
+        min_max_player = 1 if (player == 0 and not min_max) or (
+            player == 1 and min_max) else 0
 
         soldier_value = (num_white - num_black)
         king_value = (enemy_adjacent_king if king_pos == (4, 4) else enemy_adjacent_king *
@@ -190,12 +188,12 @@ class Game(Gm):
         king_pos = tuple(king_pos[0])
         return True if min(*king_pos) == 0 or max(*king_pos) == 8 else False
 
-    def utility(self, state: State, player: str) -> float:
+    def utility(self, state: State, player: int) -> float:
         king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
-            v = infinity if player == "black" else -infinity
+            v = infinity if player == 1 else -infinity
         else:
-            v = -infinity if player == "black" else infinity
+            v = -infinity if player == 1 else infinity
         print(
             f"Final State reached: player: {player}, value: {v}, (king_pos: {king_pos})")
         return v

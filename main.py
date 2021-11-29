@@ -46,7 +46,7 @@ board = False
 
 
 # Used by argparse to parse cli arguments
-TURNS_MAP = {'white': 0, 'black': 1}
+TURNS_MAP = {'player': 0, 'ai': 1, "remote": 1}
 
 
 def main(players_data: list[tuple[str, Type[Player], tuple]],
@@ -72,6 +72,7 @@ def main(players_data: list[tuple[str, Type[Player], tuple]],
     default_arguments = make_move, board, game
 
     for p_name, p_type, params in players_data:
+        print(p_type, params)
         players.append(p_type(*default_arguments, p_name, *params))
 
     logging.info(f'players {[p.player for p in players]}')
@@ -151,16 +152,28 @@ def main_cli():
     parser.add_argument('-g', '--gui', dest='gui', action='store_true',
                         help='play with or without a gui?')
     parser.add_argument('-s', '--starts', dest='turn', nargs=1,
-                        default=['white'],
-                        help='the player who shall start. Supported options '
-                              'are: white, black, random. Default behaviour '
-                              'is: white.')
+                        default=['player'], choices=['player', "ai", 'remote'],
+                        help='The player who shall start. Used only'
+                             'if --ai is used. To use remote see --remote.'
+                             'Supported options are: player, ai, remote. '
+                             'Default behaviour is: player.')
     parser.add_argument('--competition', dest='competition', nargs=3,
                         default=None,
                         metavar=('COLOR', 'TIMEOUT', 'SERV_ADDRESS'),
                         help='Launch the tablut engine for the unibo '
                              'competition. Specify color as white or black '
                              'and the ip address for the server.')
+    parser.add_argument('--ai', dest='ai', action="store_true",
+                        help='play against a ai')
+    parser.add_argument('--aitime', dest='aitime', default=[10], type=int,
+                        help='Set the max time used of the ai to think.'
+                             'Used only if the flag --ai is used. Min '
+                             'value is 6. Default behaviour is: 10')
+    parser.add_argument('--remote', dest='remote', default=[None, None], nargs=2,
+                        help='Play remotely connecting to a server. '
+                             'In order to set the turn of the local player use --turn remote'
+                             'The correct syntax is: --remote ipAddress TeamName.'
+                             'eg. --remote 127.0.0.1 GoodPlayer')
 
     comp_ports = {'white': 5800, 'black': 5801}
 
@@ -173,16 +186,25 @@ def main_cli():
         logging.getLogger().setLevel(logging.INFO)
 
     # Manage first player turn
-    parsed_turn, = args.turn
-    turn = random.choice((0, 1))
-    if parsed_turn != 'random':
-        turn = TURNS_MAP[parsed_turn]
+    turn = TURNS_MAP[args.turn[0]]
 
-    # Manage player types (TODO manage remote, minimax, etc.) and order
-    playertype = Kivy if args.gui else Console
-    players_ = [('white', playertype, tuple()), ('black', playertype, tuple())]
-    if turn:        # If it's black's turn
-        players_.reverse()
+    # Manage player types (TODO manage remote, ) and order
+    playertype1 = Kivy if args.gui else Console
+    playertype2 = MinMax if args.ai else \
+        Remote if args.remote != [None, None] else \
+        Kivy if args.gui else \
+        Console
+    param_1 = tuple()
+    param_2 = ((args.remote[0], comp_ports["white" if turn == 0 else "black"]), args.remote[1]) if args.remote != [None, None] else \
+        (args.aitime,) if args.ai else \
+        tuple()
+
+    if turn == 0:
+        players_ = [("white", playertype1, param_1),
+                    ("black", playertype2, param_2)]
+    else:
+        players_ = [("white", playertype2, param_2),
+                    ("black", playertype1, param_1)]
 
     # Override default players for competition
     if args.competition is not None:
