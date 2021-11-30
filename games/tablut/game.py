@@ -81,7 +81,7 @@ class Game(Gm):
                 # from player pos-1 to 0 (inclusive)
                 for i in reversed(range(0, position[0])):
                     # the action is ok if cell is empty, do not allow camp jump(eg. from left to right camp), go in a camp iff piece is in a camp, don't go in escape cell
-                    if state[1][i][position[1]] != 0 or ((i+1, position[1]) not in self.camp_list and (i, position[1]) in self.camp_list) or ((i, position[1]) in self.camp_list and position not in self.camp_list) or (i, position[1]) in self.escape_list or (i, position[1]) == (4, 4):
+                    if state[1][i][position[1]] != 0 or ((i+1, position[1]) not in self.camp_list and (i, position[1]) in self.camp_list) or ((i, position[1]) in self.camp_list and position not in self.camp_list) or (i, position[1]) == (4, 4):
                         break
                     else:
                         actions.append(
@@ -89,7 +89,7 @@ class Game(Gm):
                 # from player pos+1 to 8 (inclusive)
                 for i in range(position[0]+1, 9):
 
-                    if state[1][i][position[1]] != 0 or ((i-1, position[1]) not in self.camp_list and (i, position[1]) in self.camp_list) or ((i, position[1]) in self.camp_list and position not in self.camp_list) or (i, position[1]) in self.escape_list or (i, position[1]) == (4, 4):
+                    if state[1][i][position[1]] != 0 or ((i-1, position[1]) not in self.camp_list and (i, position[1]) in self.camp_list) or ((i, position[1]) in self.camp_list and position not in self.camp_list) or (i, position[1]) == (4, 4):
                         break
                     else:
                         actions.append(
@@ -97,13 +97,13 @@ class Game(Gm):
             # compute movement for column
             if position[0] >= 0 and position[0] <= 8:
                 for i in reversed(range(0, position[1])):
-                    if state[1][position[0]][i] != 0 or ((position[0], i+1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (position[0], i) == (4, 4):
+                    if state[1][position[0]][i] != 0 or ((position[0], i+1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) == (4, 4):
                         break
                     else:
                         actions.append(
                             (position[0], position[1], position[0], i))
                 for i in range(position[1]+1, 9):
-                    if state[1][position[0]][i] != 0 or ((position[0], i-1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) in self.escape_list or (position[0], i) == (4, 4):
+                    if state[1][position[0]][i] != 0 or ((position[0], i-1) not in self.camp_list and (position[0], i) in self.camp_list) or ((position[0], i) in self.camp_list and position not in self.camp_list) or (position[0], i) == (4, 4):
                         break
                     else:
                         actions.append(
