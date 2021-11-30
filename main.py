@@ -165,7 +165,7 @@ def main_cli():
                              'and the ip address for the server.')
     parser.add_argument('--ai', dest='ai', action="store_true",
                         help='play against a ai')
-    parser.add_argument('--aitime', dest='aitime', default=[10], type=int,
+    parser.add_argument('--aitime', dest='aitime', default=10, type=int,
                         help='Set the max time used of the ai to think.'
                              'Used only if the flag --ai is used. Min '
                              'value is 6. Default behaviour is: 10')
