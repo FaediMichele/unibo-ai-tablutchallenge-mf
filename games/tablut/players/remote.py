@@ -64,13 +64,24 @@ class Client():
         self.socket.sendall(msg_prepare(data))
 
     def read(self):
-        ret = self.socket.recv(self.buffer_size)
-        # The integer size seem to be sent separately (idk really)
-        # so it will sometimes be received without his message.
-        # In that case, wait for the message and unpack the whole thing.
-        if len(ret) == 4:
-            ret += self.socket.recv(self.buffer_size)
-        return msg_unpack(ret)
+        """Read data from the socket.
+
+        Data is assumed to be prepended with a 4 bytes integer
+        representing the size of the message.
+
+        In order to avoid strange behaviours of the competition's
+        network, the message will be read byte per byte.
+        """
+        # Read 4 bytes
+        recv = bytes()
+        while len(recv) < 4:
+            recv += self.socket.recv(1)
+
+        # Read all the message
+        size = int.from_bytes(recv[:4], byteorder='big')
+        while len(recv) - 4 < size:
+            recv += self.socket.recv(1)
+        return msg_unpack(recv)
 
 
 class Remote(Player):
