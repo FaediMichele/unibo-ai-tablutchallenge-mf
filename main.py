@@ -43,6 +43,7 @@ players = []
 action_ready = False
 state_ready = False
 board = False
+state_history = []
 
 
 # Used by argparse to parse cli arguments
@@ -94,44 +95,44 @@ def loaded():
     ''' When the board have loaded his state, start the first player.
     If the board is a GUI, this function is called on window loaded'''
 
-    def player_manager():
-        global action_ready, player_turn, state_ready
-        print("schedule runned")
-        if action_ready:
-            new_state = game.result(board.state, action_ready)
-            board.select_state(new_state)
-            # players_history[player_turn].append(action)
+    players[0].next_action(None, [])
 
-            if game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
-                players[player_turn].end(
-                    action_ready, players[player_turn].player)
-                players[1 - player_turn].end(
-                    action_ready, players[player_turn].player)
-                print(f"Player {players[player_turn].player} wins")
-                return
-            player_turn = (player_turn + 1) % len(players)
-            action = action_ready
-            action_ready = False
-            players[player_turn].next_action(action)
-        elif state_ready:
-            board.select_state(state_ready)
-            # players_history[player_turn].append(action)
+def player_manager():
+    global action_ready, player_turn, state_ready, state_history
+    print("schedule runned")
+    if action_ready:
+        new_state = game.result(board.state, action_ready)
+        board.select_state(new_state)
+        state_history.append(new_state)
+        # players_history[player_turn].append(action)
 
-            if game.is_terminal(state_ready) or len(game.actions(state_ready)) == 0:
-                players[player_turn].end(
-                    action_ready, players[player_turn].player)
-                players[1 - player_turn].end(
-                    action_ready, players[player_turn].player)
-                print(f"Player {players[player_turn].player} wins")
-                return
-            player_turn = (player_turn + 1) % len(players)
-            action = action_ready
-            action_ready = False
-            players[player_turn].next_action(action)
+        if game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
+            players[player_turn].end(
+                action_ready, players[player_turn].player)
+            players[1 - player_turn].end(
+                action_ready, players[player_turn].player)
+            print(f"Player {players[player_turn].player} wins")
+            return
+        player_turn = (player_turn + 1) % len(players)
+        action = action_ready
+        action_ready = False
+        players[player_turn].next_action(action, state_history)
+    elif state_ready:
+        board.select_state(state_ready)
+        state_history.append(new_state)
+        # players_history[player_turn].append(action)
 
-    board.add_manager_function(player_manager)
-    players[0].next_action(None)
-
+        if game.is_terminal(state_ready) or len(game.actions(state_ready)) == 0:
+            players[player_turn].end(
+                action_ready, players[player_turn].player)
+            players[1 - player_turn].end(
+                action_ready, players[player_turn].player)
+            print(f"Player {players[player_turn].player} wins")
+            return
+        player_turn = (player_turn + 1) % len(players)
+        action = action_ready
+        action_ready = False
+        players[player_turn].next_action(action, state_history)
 
 def make_move(param):
     """ Function that manage the turns between two player"""
@@ -143,7 +144,7 @@ def make_move(param):
         state_ready = param
         action_ready = False
 
-    board.run_manager_function()
+    board.run_manager_function(player_manager)
 
 
 def main_cli():

@@ -26,7 +26,7 @@ class Player:
         self.player = player
         super(Player, self).__init__()
 
-    def next_action(self, last_action: Action):
+    def next_action(self, last_action: Action, state_history: list[State]):
         ''' Function called when the opponent take the move and now is the turn of this player
 
         Keyword arguments:

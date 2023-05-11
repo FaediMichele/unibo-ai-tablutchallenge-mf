@@ -1,6 +1,8 @@
 from pymitter import EventEmitter
 import os
 import asyncio
+from functools import partial
+
 
 package_directory = os.path.dirname(os.path.abspath(__file__))
 
@@ -39,5 +41,5 @@ class Board:
     def add_manager_function(self, function):
         self.manager_function = function
 
-    def run_manager_function(self):
-        self.scheduler.append(self.manager_function)
+    def run_manager_function(self, func):
+        self.scheduler.append(func)

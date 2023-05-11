@@ -55,7 +55,7 @@ class MinMax(Player):
         self.cached_moves = []
         self.h = h if h != None else game.h
 
-    def next_action(self, last_action: Action):
+    def next_action(self, last_action: Action, state_history: list[State]):
         """Start a monitored thread for the next action."""
         self.cached_moves.clear()
         self.timeout_event.clear()
@@ -87,7 +87,7 @@ class MinMax(Player):
         except TimeoutError:
             return
 
-    def _next_action_cutoff(self, last_action: Action, cutoff: Callable[Game, State, int]):
+    def _next_action_cutoff(self, last_action: Action, cutoff: Callable[[Game, State, int], bool]):
         """Calculate and cache the best action with the given cutoff.
 
         This function is used internally for iterative deepening. The

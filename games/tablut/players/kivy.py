@@ -1,4 +1,4 @@
-from games.player import Player
+from games.player import Player, State
 
 
 class Kivy(Player):
@@ -48,6 +48,6 @@ class Kivy(Player):
             self.highlighted_actions = []
             self.board.highlight_actions(self.board.state)
 
-    def next_action(self, last_action):
+    def next_action(self, last_action, state_history: list[State]):
         print(f"Player {self.player} turn. Last action: {last_action}")
         self.my_turn = True

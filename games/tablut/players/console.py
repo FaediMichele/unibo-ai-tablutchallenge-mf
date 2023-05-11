@@ -1,4 +1,4 @@
-from games.player import Player
+from games.player import Player, State
 
 
 class Console(Player):
@@ -24,7 +24,7 @@ class Console(Player):
                     ("  " if state[1][k][i] >= 0 else " ")
             print(line)
 
-    def next_action(self, last_action):
+    def next_action(self, last_action, state_history: list[State]):
         self.print_board(self.board.state)
         while True:
             string = input(

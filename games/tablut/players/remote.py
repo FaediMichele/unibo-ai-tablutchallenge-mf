@@ -1,4 +1,4 @@
-from games.player import Player
+from games.player import Player, State
 import json
 import string
 import socket
@@ -141,7 +141,7 @@ class Remote(Player):
         print("IM HERE", (TURN_ECONDING[data["turn"]], new_state))
         return (TURN_ECONDING[data["turn"]], new_state)
 
-    def next_action(self, last_action):
+    def next_action(self, last_action, state_history: list[State]):
         # First turn, don't send anything and wait for the server's
         # first state
         if last_action is not None:
