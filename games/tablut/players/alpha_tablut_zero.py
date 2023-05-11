@@ -16,18 +16,24 @@ from tensorflow import keras
 from keras import layers
 from tqdm import tqdm
 import datetime
+import json
 
+SAVE_ITERATIONS = [1, 10, 25, 50, 100, 300, 500, 1000, 2000, 5000, 10000]
 
 MAX_ACTION_COUNT = 10_000
 PREVIOUS_STATE_TO_MODEL = 7
-cache = []
-N: dict[tuple[State, Action], int] = defaultdict(lambda: 0)
-W: dict[tuple[State, Action], float] = defaultdict(lambda: 0.0)
-Q: dict[tuple[State, Action], float] = defaultdict(lambda: 0.0)
-P: dict[tuple[State, Action], float] = dict()
-parent_child: dict[tuple[State, Action], State] = dict()
-child_parent: dict[State, tuple[State, Action]] = dict()
-state_actions: dict[State, list[Action]] = dict()
+
+
+class TransferableMemory:
+    def __init__(self) -> None:
+        self.cache = []
+        self.N: dict[tuple[State, Action], int] = defaultdict(lambda: 0)
+        self.W: dict[tuple[State, Action], float] = defaultdict(lambda: 0.0)
+        self.Q: dict[tuple[State, Action], float] = defaultdict(lambda: 0.0)
+        self.P: dict[tuple[State, Action], float] = dict()
+        self.parent_child: dict[tuple[State, Action], State] = dict()
+        self.child_parent: dict[State, tuple[State, Action]] = dict()
+        self.state_actions: dict[State, list[Action]] = dict()
 
 class AlphaTablutZero(Player):
     ''' Player that take random actions '''
@@ -37,8 +43,10 @@ class AlphaTablutZero(Player):
                                            board: Board,
                                            game: Game,
                                            player: str,
-                                           train: bool=False,
-                                           ms_for_search: int=5000):
+                                           greedy: bool=False,
+                                           memory: TransferableMemory=None,
+                                           ms_for_search: int=5000,
+                                           ):
         """Create a new player tha play randomly
 
         Keyword arguments:
@@ -52,10 +60,9 @@ class AlphaTablutZero(Player):
         self.game = game
         self.player = player
         self.ms_for_search = ms_for_search
-        self.cache: list[list[State, list[float], None | float]] = []
-        
-        self.model = ModelUtil.load_model()
-        self.train = train
+        self.cache = []
+        self.memory = memory if memory is not None else TransferableMemory()
+        self.greedy = greedy
         super(Player, self).__init__()
 
     def next_action(self, last_action: Action, state_history: list[State]):
@@ -68,10 +75,11 @@ class AlphaTablutZero(Player):
         state = state_hashable(self.board.state)
         self._remove_old_branch(state)
         policy = self._mcts(state, state_history, self.ms_for_search)
-        if self.train:
-            self.make_move(random.choices(state_actions[state], policy)[0])
+        if self.greedy:
+            self.make_move(self.memory.state_actions[state][argmax(policy)])
         else:
-            self.make_move(state_actions[state][argmax(policy)])
+            self.make_move(random.choices(self.memory.state_actions[state],
+                                          policy)[0])
 
     def end(self, last_action: Action, winning: str):
         """Called when a player wins.
@@ -82,129 +90,132 @@ class AlphaTablutZero(Player):
         logging.info(f'Calling win on {Player}, winning: {winning}')
         for evaluation in self.cache:
             evaluation.append(1.0 if winning == self.player else -1.0)
-
-        if self.train:
-            ModelUtil.train_model(self.model, self.cache)
-
-    
+        self.memory.cache.extend(self.cache)
 
     def _remove_old_branch(self, current_state: State):
-        global N, W, Q, P, parent_child, child_parent, state_actions
+        
         visited_states_for_branch = self._descendant(current_state)
 
         tmp = defaultdict(lambda: 0.0)
-        for (s,a), v in N.items():
+        for (s,a), v in self.memory.N.items():
             if s in visited_states_for_branch:
                 tmp[(s, a)] = v
-        N = tmp
+        self.memory.N = tmp
 
         tmp = defaultdict(lambda: 0.0)
-        for (s,a), v in W.items():
+        for (s,a), v in self.memory.W.items():
             if s in visited_states_for_branch:
                 tmp[(s, a)] = v
-        W = tmp
+        self.memory.W = tmp
 
         tmp = defaultdict(lambda: 0.0)
-        for (s,a), v in Q.items():
+        for (s,a), v in self.memory.Q.items():
             if s in visited_states_for_branch:
                 tmp[(s, a)] = v
-        Q = tmp
+        self.memory.Q = tmp
 
-        P = dict(((s, a), v) for (s,a), v in P.items()
+        self.memory.P = dict(((s, a), v) for (s,a), v in self.memory.P.items()
                  if s in visited_states_for_branch)
         
-        parent_child = dict(
-            ((s, a), v) for (s, a), v in parent_child.items()
+        self.memory.parent_child = dict(
+            ((s, a), v) for (s, a), v in self.memory.parent_child.items()
             if s in visited_states_for_branch)
 
-        child_parent = dict((s,v) for s,v in child_parent.items()
-                                 if s in visited_states_for_branch)
-        if current_state in child_parent.keys():
-            del child_parent[current_state]
-        state_actions = dict((s,v) for s,v in state_actions.items()
-                                 if s in visited_states_for_branch)
+        self.memory.child_parent = dict((s,v) for s,v in
+                                        self.memory.child_parent.items()
+                                        if s in visited_states_for_branch)
+        if current_state in self.memory.child_parent.keys():
+            del self.memory.child_parent[current_state]
+        self.memory.state_actions = dict((s,v) for s,v in
+                                         self.memory.state_actions.items()
+                                         if s in visited_states_for_branch)
 
     def _descendant(self, state) -> list[State]:
-        if state in state_actions.keys():
+        if state in self.memory.state_actions.keys():
             return list(self._descendant(child)
-                        
-                        for a in state_actions[state]
-                        for child in parent_child[(state, a)]
-                    ) + [state]
+                        for a in self.memory.state_actions[state]
+                        for child in self.memory.parent_child[(state, a)]
+                        ) + [state]
         else:
             return [state]
+
     def _mcts(self, root: State, state_history: list[State],
               ms_for_search: int, temperature: float=1.0) ->list[float]:
-        global N, W, Q, P, parent_child, child_parent, state_actions
-        state_actions[root] = self.game.actions(root)
+        self.memory.state_actions[root] = self.game.actions(root)
 
-        p_0, v_0 = self._evaluate_state(root, state_actions[root],
-                                        state_history)
+        p_0, v_0, root_tensor = self._evaluate_state(
+            root, self.memory.state_actions[root], state_history,
+            return_state_transformed=True)
 
-        self._expand(root, state_actions[root], p_0)
+        self._expand(root, self.memory.state_actions[root], p_0)
         
         start_timer = datetime.datetime.now()
         while (datetime.datetime.now() - start_timer
                ).total_seconds() * 1000 < ms_for_search:
             s = root
             tree_path = []
-            while s in state_actions.keys():
+            while s in self.memory.state_actions.keys():
                 
-                a_star = state_actions[s][
-                    argmax([
-                        Q[(s, a)] +
-                        self._upper_confidence_bound(s, a)
-                        for a in state_actions[s]])]
-                N[(s, a_star)] = N[(s, a_star)] + 1
-                s = parent_child[(s, a_star)]
+                a_star = argmax(self.memory.state_actions[s],
+                                key=lambda a:self.memory. Q[(s, a)] + 
+                                self._upper_confidence_bound(s, a))
+                self.memory.N[(s, a_star)] = self.memory.N[(s, a_star)] + 1
+                s = self.memory.parent_child[(s, a_star)]
                 tree_path.append(s)
 
-            state_actions[s] = self.game.actions(s)
-            p, v = self._evaluate_state(s, state_actions[s],
+            self.memory.state_actions[s] = self.game.actions(s)
+            p, v = self._evaluate_state(s, self.memory.state_actions[s],
                                         state_history + tree_path)
-            self._expand(s, state_actions[s], p)
+            self._expand(s, self.memory.state_actions[s], p)
             self._backup(s, v)
 
-        count_action_taken = [N[(root, a)] ** (1/temperature)
-                              for a in state_actions[root]]
+        count_action_taken = [self.memory.N[(root, a)] ** (1/temperature)
+                              for a in self.memory.state_actions[root]]
         denominator_policy = sum(count_action_taken)
         policy = [t / denominator_policy for t in count_action_taken]
         self.cache.append([
-            root,
-            policy
+            root_tensor,
+            policy,
+            self.memory.state_actions[root]
         ])
         return policy
 
 
     def _upper_confidence_bound(self, state: State, action: Action,
                                 cput: float = 5.0) -> float:
-        global N, P, state_actions
-        return cput * P[(state, action)] * \
-            math.sqrt(sum([N[(state, a)] for a in state_actions[state]])) \
-                / (1 + N[(state, action)])
+        return cput * self.memory.P[(state, action)] * \
+            math.sqrt(sum([self.memory.N[(state, a)] for a in
+                           self.memory.state_actions[state]])) /\
+                            (1 + self.memory.N[(state, action)])
 
     def _expand(self, state: State, actions: list[Action], policy: list[float]):
-        global P, parent_child, child_parent
         for a, pa in zip(actions, policy):
             new_state = state_hashable(self.game.result(unhash_state(state), a))
-            parent_child[(state, a)] = new_state
-            child_parent[new_state] = (state, a)
-            P[(state, a)] = pa
+            self.memory.parent_child[(state, a)] = new_state
+            self.memory.child_parent[new_state] = (state, a)
+            self.memory.P[(state, a)] = pa
 
     def _backup(self, state: State, state_value: float):
-        while state in child_parent.keys():
-            state, action = child_parent[state]
-            W[(state, action)] = W[(state, action)] + state_value
-            Q[(state, action)] = W[(state, action)] / N[(state, action)]
+        while state in self.memory.child_parent.keys():
+            state, action = self.memory.child_parent[state]
+            self.memory.W[(state, action)] = self.memory.W[(state, action)] +\
+                state_value
+            self.memory.Q[(state, action)] = self.memory.W[(state, action)] /\
+                self.memory.N[(state, action)]
 
     def _evaluate_state(self, state: State, actions: list[Action],
-                        state_history: list[State]
-                        ) -> tuple[list[float], float]:
-        state_value, policy = ModelUtil.predict(self.model,
-                                                self._state_transoform(state,
-                                                state_history))
-        policy = self._policy_transform(policy, actions)
-        return policy, state_value
+                        state_history: list[State],
+                        return_state_transformed=False) -> tuple[list[float], float]:
+        
+        state_transformed = self._state_transoform(state, state_history)
+        state_value, policy = ModelUtil.predict(model,
+                                                state_transformed)
+        policy = policy_matrix_to_policy(policy[0], actions)
+
+        if return_state_transformed:
+            return policy, state_value, state_transformed
+        else:
+            return policy, state_value
     
     def _state_transoform(self, state: State, state_history: list[State]
                           ) -> tf.Tensor:
@@ -218,18 +229,6 @@ class AlphaTablutZero(Player):
         tensor_player = tf.ones(board_shape, tensor_board.dtype) * (player * 2 - 1)
         return tf.expand_dims(tf.concat([tensor_board, tensor_player],
                                         axis=0), axis=0)
-
-
-    def _policy_transform(self, policy, actions: list[Action]) -> list[float]:
-        res = []
-        for a in actions:
-            res.append(policy[0, a[0], a[1], 0] * policy[0, a[2], a[3], 1])
-
-        # normalize. Maybe a softmax is better?
-        s_res = sum(res)
-        res = [r/s_res for r in res]
-
-        return res
     
 
 
@@ -243,24 +242,25 @@ class ModelUtil:
         input_layer = keras.Input(input_shape) 
         x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(input_layer)
         x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(x)
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish',
+        x = layers.Conv2D(81, 3, 1, 'same', activation='swish',
                           kernel_regularizer=keras.regularizers.l2(0.01))(x)
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(x)
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(x)
+        x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
+                          kernel_regularizer=keras.regularizers.l2(0.01))(tf.reshape(x, (-1,9,9,9,9)))
+        x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
+                          kernel_regularizer=keras.regularizers.l2(0.01))(x_p)
         
         value = layers.Dense(1, 'linear')(layers.Flatten()(x))
-        policy = layers.Conv2D(2, 3, 1, 'same', activation='softmax')(x)
+        policy = layers.Conv3D(9, 3, 1, 'same', activation='softmax')(x_p)
         model = keras.Model(inputs=input_layer, outputs=[value, policy])
+        model.compile()
         return model
 
     @staticmethod
     def load_model(path: str='alpha_zero', board_size: tuple[int, int]=(9, 9)
                    ) -> tuple[keras.Model, keras.optimizers.Optimizer]:
-        last_model = ModelUtil.get_last_model_path(path)
-        if last_model[0] is not None:
-            model = keras.models.load_model(path, compile=False)
+        current_model_path = ModelUtil.get_last_model_path(path)
+        if current_model_path is not None:
+            model = keras.models.load_model(current_model_path, compile=False)
             optimizer = keras.optimizers.Adam()
             return model, optimizer
         else:
@@ -271,17 +271,26 @@ class ModelUtil:
     
     @staticmethod
     def save_model(model: tuple[keras.Model, keras.optimizers.Optimizer],
-                   path: str='alpha_zero',
-                   key: int=0):
-        model_dir = ModelUtil.get_last_model_path(path)
-        if model_dir is not None:
-            path = model_dir[0].replace(model_dir[1], model_dir[1] + 1)
-            model[0].save(path)
+                   path: str='alpha_zero'):
+        config_file_path = os.path.join(path, 'config.json')
+        if os.path.isfile(config_file_path):
+            with open(os.path.join(path, 'config.json'), 'r') as f:
+                config = json.load(f)
         else:
-            path = os.path.join(path, f'model_{key}')
-            model[0].save(path)
-        
+            config = {
+                'current_iteration': 0,
+                'current': 'last_model'
+            }
+        current_iteration = config['current_iteration']
+        current_model_path = config['current']
+        model[0].save(os.path.join(path, current_model_path))
 
+        if current_iteration in SAVE_ITERATIONS:
+            model[0].save(os.path.join(path, f'old_model_{current_iteration}'))
+
+        config['current_iteration'] += 1
+        with open(config_file_path, 'w') as f:
+            json.dump(config, f)
 
     @staticmethod
     def predict(model: tuple[keras.Model, keras.optimizers.Optimizer], data):
@@ -289,32 +298,43 @@ class ModelUtil:
         return value, policy
 
     @staticmethod
+    @tf.function
+    def loss_fn(model, pi, z, v, p):
+        mse = keras.losses.mean_squared_error(z, v)
+        pi, p = tf.reshape(pi, (pi.shape[0],-1)), tf.reshape(p, (p.shape[0],-1))
+        cross_entropy = keras.losses.categorical_crossentropy(pi, p)
+        penalty = sum(model.losses)
+        return mse + cross_entropy + penalty
+
+    @staticmethod
     def train_model(model: tuple[keras.Model, keras.optimizers.Optimizer],
+                    cache: list[dict]=None,
                     cache_folder: str='alpha_zero',
-                    batch_size: int=32, step_for_epoch: int=1000,
-                    epochs: int=1, cache: list[dict]=None):
+                    batch_size: int=32,
+                    step_for_epoch: int=100,
+                    epochs: int=1):
         
         model, optimizer = model
         if cache is not None:
             ModelUtil.save_cache(cache, cache_folder)
 
-        samples = ModelUtil.get_last_samples(cache_folder, batch_size *
-                                             step_for_epoch * epochs)
-        
-        def loss_fn(pi, z, v, p):
-            return (keras.losses.mean_squared_error(z, v) +
-                    keras.losses.categorical_crossentropy(pi, p) +
-                    sum(model.losses)) # penalty
+        states_tensor, policies_tensor, zs_tensor  = ModelUtil.sample(
+            ModelUtil.get_last_samples(cache_folder,
+                                       batch_size * step_for_epoch), 0.3
+        )
 
+        print(policies_tensor.shape[0] // batch_size)
         for e in range(epochs):
-            for batch in tqdm(ichunked(samples, batch_size),
-                              total=step_for_epoch):
-                states_batch, pi_batch, z_batch = zip(*batch)
-
+            for batch_start in tqdm(range(0, policies_tensor.shape[0],
+                                          batch_size)):
+                batch_state = states_tensor[batch_start:batch_start +\
+                                                   batch_size]
+                batch_policy = policies_tensor[batch_start:batch_start + batch_size]
+                batch_z = zs_tensor[batch_start:batch_start + batch_size]
                 with tf.GradientTape() as tape:
-                    v_pred, p_pred = model(states_batch, training=True)
-                    loss = loss_fn(pi_batch, z_batch, v_pred, p_pred)
-
+                    v_pred, p_pred = model(batch_state, training=True)
+                    loss = ModelUtil.loss_fn(model, batch_policy, batch_z, v_pred, p_pred)
+                
                 grads = tape.gradient(loss, model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, model.trainable_weights))
             
@@ -322,7 +342,7 @@ class ModelUtil:
 
     @staticmethod
     def get_last_samples(folder_path: str, number_of_samples: int=100_000
-                         ) -> list[list[State, list[float], float]]:
+                         ) -> tuple[list[tf.Tensor], list[tf.Tensor], list[tf.Tensor]]:
         file_indexes = []
         for filename in os.listdir(folder_path):
             if filename.startswith("cache_") and filename.endswith(".pickle"):
@@ -332,34 +352,62 @@ class ModelUtil:
                 except ValueError:
                     pass  # Ignore non-integer filenames
 
-        samples = []
+        data_loaded = {
+            'state': [],
+            'policy': [],
+            'actions': [],
+            'z': []
+        }
         for filename, _ in sorted(file_indexes, key=lambda x: x[1],
                                   reverse=True):
             with open(os.path.join(folder_path, filename), "rb") as f:
-                samples.extend(pickle.load(f))
+                file_data = pickle.load(f)
 
-            if len(samples) >= number_of_samples:
-                return samples[:number_of_samples]
-            
-        return samples
+            file_state, file_policy, file_actions, file_z = zip(*file_data)
+            data_loaded['state'].extend(file_state)
+            data_loaded['policy'].extend(file_policy)
+            data_loaded['actions'].extend(file_actions)
+            data_loaded['z'].extend(file_z)
+            print(len(data_loaded['z']), number_of_samples)
+            if len(data_loaded['z']) >= number_of_samples:
+                
+                data_loaded['state'] = data_loaded['state'][:number_of_samples]
+                data_loaded['policy'] = data_loaded['policy'][:number_of_samples]
+                data_loaded['actions'] = data_loaded['actions'][:number_of_samples]
+                data_loaded['z'] = data_loaded['z'][:number_of_samples]
+                print(len(data_loaded['z']))
+                break
+        
+        state_matrix = tf.concat(data_loaded['state'], axis=0)
+        policy_matrix = tf.stack([policy_to_policy_matrix(p, a)
+                         for p, a in zip(data_loaded['policy'],
+                                         data_loaded['actions'])], axis=0)
+        z_matrix = tf.constant(data_loaded['z'], shape=(len(data_loaded['z']), 1))
+        return state_matrix, policy_matrix, z_matrix
+    
+    @staticmethod
+    def sample(samples: tuple, final_size: float) -> tuple:
+        states, policies, zs = samples
+        num_element = int(states.shape[0] * final_size)
+        sum_prob = states.shape[0] * (states.shape[0] + 1) / 2
+        choiches = np.random.choice(range(0, states.shape[0]), num_element,
+                         p=[i/sum_prob for i in range(1, states.shape[0]+1)])
+        mask = [i in choiches for i in range(0, states.shape[0])]
+        return (tf.boolean_mask(states, mask),
+                tf.boolean_mask(policies, mask),
+                tf.boolean_mask(zs, mask))
     
     @staticmethod
     def get_last_model_path(folder_path: str='alpha_zero') -> str | None:
-        res_dir = None
-        dir_n = -1
-        for name in os.listdir(folder_path):
-            if os.path.isdir(name) and name.startswith("model_"):
-                try:
-                    n = int(name[len("model_"):])
-                    if n > dir_n:
-                        dir_n = n
-                        res_dir = os.path.join(folder_path, name)
-                except ValueError:
-                    pass  # Ignore non-integer filenames
-        return res_dir, dir_n if dir_n > 0 else None
+        if os.path.isfile(os.path.join(folder_path, 'config.json')):
+            with open(os.path.join(folder_path, 'config.json'), 'r') as f:
+                config = json.load(f)
+            if os.path.isdir(os.path.join(folder_path, config['current'])):
+                return os.path.join(folder_path, config['current'])
+        return None
 
     @staticmethod
-    def save_cache(cache: list[dict], folder_path: str):
+    def save_cache(cache: list[list], folder_path: str, cache_mb_size:int=20):
         # Made with ChatGPT ;)
         # Find the latest cache file in the folder
         latest_cache_file = None
@@ -380,7 +428,7 @@ class ModelUtil:
             cache_data = []
         else:
             # Check if the latest cache file is too big
-            if os.path.getsize(latest_cache_file) > 20 * 1024 * 1024:
+            if os.path.getsize(latest_cache_file) > cache_mb_size * 1024 * 1024:
                 # If the latest cache file is too big, create a new one
                 cache_filename = os.path.join(folder_path,
                                               f"cache_{latest_cache_n+1}.pickle")
@@ -398,7 +446,7 @@ class ModelUtil:
         with open(cache_filename, "wb") as f:
             pickle.dump(cache_data, f)
 
-        
+model = ModelUtil.load_model()
 
 
 def state_hashable(state: State) -> tuple:
@@ -410,9 +458,31 @@ def unhash_state(state) -> list:
     return player, list(list(line) for line in board)
 
 
-def argmax(lis: list[float]) -> int:
+def argmax(elements: list[Any], key: Callable[[Any], float]=lambda x:x) -> int:
     k = 0
-    for i in range(1, len(lis)):
-        if lis[i] > lis[k]:
+    k_val = key(elements[k])
+    for i in range(1, len(elements)):
+        i_val = key(elements[i])
+        if i_val > k_val:
             k = i
-    return k
+            k_val = i_val
+    return elements[k]
+
+def policy_matrix_to_policy(matrix, actions: list[Action]) -> list[float]:
+    return [matrix[a[0],a[1],a[2],a[3]] for a in actions]
+
+def policy_to_policy_matrix(policy: list[float], actions: list[Action]
+                            ) -> tf.Tensor:
+    action_to_policy = dict((a, p) for a, p in zip(actions, policy))
+    matrix = tf.constant([
+        [
+            [
+                [action_to_policy[(x1,y1,x2,y2)]
+                 if (x1,y1,x2,y2) in action_to_policy.keys()
+                 else 0.0
+                 for y2 in range(9)
+                ] for x2 in range(9)
+            ] for y1 in range(9)
+        ] for x1 in range(9)
+    ])
+    return matrix    
