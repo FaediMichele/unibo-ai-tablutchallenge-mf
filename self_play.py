@@ -20,18 +20,21 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
     new_state = game.result(board.state, action)
     board.select_state(new_state)
     state_history.append(new_state)
-    if len(state_history) > 100:
+    if len(state_history) > 20:
         player_to_move.end(action, opponent.player)
         opponent.end(action, player_to_move.player)
         print("Game too long")
-        ModelUtil.train_model(model, player_to_move.memory.cache)
+        ModelUtil.train_model(model, player_to_move.memory.cache + 
+                              opponent.memory.cache)
         ModelUtil.save_model(model)
         
     elif game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
         player_to_move.end(action, opponent.player)
         opponent.end(action, opponent.player)
         print("Game ended with a winner")
-        ModelUtil.train_model(model, player_to_move.memory.cache)
+        ModelUtil.train_model(model, player_to_move.memory.cache + 
+                              opponent.memory.cache,
+                              winner=opponent.player)
         ModelUtil.save_model(model)
     else:
         player_to_move.next_action(action, state_history)
@@ -39,6 +42,8 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
 def loaded(board: Board, game: Game, player1: Player, player2: Player):
     ''' When the board have loaded his state, start the first player.
     If the board is a GUI, this function is called on window loaded'''
+    if board.show_board:
+        board.print_board()
     if board.state[0] == player1.player:
         player1.next_action(None, [])
     else:
@@ -54,11 +59,10 @@ def main():
                                                           player1, player2,
                                                           action))
 
-    memory = TransferableMemory()
-    player1 = AlphaTablutZero(make_move, board, game, 0, memory=memory,
-                              greedy=False, ms_for_search=100)
-    player2 = AlphaTablutZero(make_move, board, game, 1, memory=memory,
-                              greedy=False, ms_for_search=100)
+    player1 = AlphaTablutZero(make_move, board, game, 0, memory=TransferableMemory(),
+                              greedy=False, ms_for_search=10000)
+    player2 = AlphaTablutZero(make_move, board, game, 1, memory=TransferableMemory(),
+                              greedy=False, ms_for_search=10000)
 
     on_ready = partial(loaded, board, game, player1, player2)
 

@@ -5,6 +5,7 @@ def main():
     player = AlphaTablutZero(None, None, None, 0)
     ModelUtil.train_model(model, None)
 
+
 if __name__ == '__main__':
     main()
 

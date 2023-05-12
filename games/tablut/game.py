@@ -116,6 +116,8 @@ class Game(Gm):
         return actions
 
     def actions(self, state: State) -> list[Action]:
+        if self.is_terminal(state):
+            return []
         actions = []
         for d in self.get_piece_positions(state):
             actions.extend(self.get_piece_actions(state, d))

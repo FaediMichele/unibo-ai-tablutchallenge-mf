@@ -42,7 +42,7 @@ class AlphaTablutZero(Player):
                                            None],
                                            board: Board,
                                            game: Game,
-                                           player: str,
+                                           player: int,
                                            greedy: bool=False,
                                            memory: TransferableMemory=None,
                                            ms_for_search: int=5000,
@@ -206,7 +206,12 @@ class AlphaTablutZero(Player):
     def _evaluate_state(self, state: State, actions: list[Action],
                         state_history: list[State],
                         return_state_transformed=False) -> tuple[list[float], float]:
-        
+        if len(actions) == 0 and self.game.is_terminal(state):
+            state_value = -1 if state[0] == self.player else 1
+            if return_state_transformed:
+                return [], state_value, self._state_transoform(state, state_history)
+            else:
+                return [], state_value
         state_transformed = self._state_transoform(state, state_history)
         state_value, policy = ModelUtil.predict(model,
                                                 state_transformed)
@@ -223,20 +228,104 @@ class AlphaTablutZero(Player):
         boards = [board] + [sh[1] for sh in state_history[:PREVIOUS_STATE_TO_MODEL]]
         while len(boards) <= PREVIOUS_STATE_TO_MODEL:
             boards.append(boards[-1])
-        board_shape = (1, len(state[1]), len(state[1][0]))
+        board_shape = (len(state[1]), len(state[1][0]), 1)
         
-        tensor_board = tf.constant(boards)
-        tensor_player = tf.ones(board_shape, tensor_board.dtype) * (player * 2 - 1)
-        return tf.expand_dims(tf.concat([tensor_board, tensor_player],
-                                        axis=0), axis=0)
+        tensor_board = tf.stack(boards, axis=2)
+        tensor_state_player = (tf.ones(board_shape, tensor_board.dtype) *
+                               (player * 2 - 1))
+        tensor_this_player = (tf.ones(board_shape, tensor_board.dtype) *
+                              (self.player * 2 - 1))
+        return tf.concat([tensor_board,
+                          tensor_state_player,
+                          tensor_this_player], axis=2)
     
 
 
 class ModelUtil:
     # TODO do a reg net instead
     @staticmethod
-    def create_model(board_size: tuple[int, int]
+    def create_model(board_size: tuple[int, int]) -> keras.Model:
+        # Made with ChatGPT with few corrections ;) - inspired by RegNetY
+        # Define the input layer
+
+        # history + current_state + state_player + playing player
+        input_shape = (board_size[0], board_size[1], PREVIOUS_STATE_TO_MODEL + 3)
+        inputs = tf.keras.Input(shape=input_shape)
+
+        # Define the base width, slope, and expansion factor parameters for RegNetY-200MF
+        w_0 = 24
+        w_a = 24.48
+        w_m = 2.49
+        d = 13
+
+        # Compute the number of channels for each block group
+        def compute_channels(n_blocks, w_prev):
+            w = w_prev
+            channels = []
+            for i in range(n_blocks):
+                w_next = int(round(w * w_a / w_0 ** (w_m / d)))
+                channels.append(w_next)
+                w = w_next
+            return channels
+
+        # Compute the channels for each block group in RegNetY-200MF
+        channels = compute_channels(n_blocks=3, w_prev=w_0)
+
+        # First stage
+        x = layers.Conv2D(filters=channels[0], kernel_size=3,
+                          padding='same')(inputs)
+        x = layers.BatchNormalization()(x)
+        x = layers.ReLU()(x)
+
+        # Second stage
+        for i in range(1):
+
+            # Compute the channels for this block group
+            n_channels = channels[i]
+
+            # Residual path
+            identity = x
+
+            # BottleNeckBlock
+            x = layers.Conv2D(filters=n_channels, kernel_size=1, strides=1)(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.ReLU()(x)
+            x = layers.Conv2D(filters=n_channels, kernel_size=3, strides=1,
+                              padding='same')(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.ReLU()(x)
+            x = layers.Conv2D(filters=n_channels * 4, kernel_size=1, strides=1)(x)
+            x = layers.BatchNormalization()(x)
+
+            # Skip connection
+            if identity.shape[-1] != x.shape[-1]:
+                identity = layers.Conv2D(filters=n_channels * 4,
+                                         kernel_size=1, strides=1)(identity)
+                identity = layers.BatchNormalization()(identity)
+
+            x = layers.Add()([x, identity])
+            x = layers.ReLU()(x)
+        
+        # Extract the value
+        value = layers.Conv2D(16, 3, 1, activation='swish')(x)
+        value = layers.Flatten()(value)
+        value = layers.Dense(16, 'swish')(value)
+        value = layers.Dense(1, 'linear')(value)
+
+        # Extract the policy
+        x = layers.Conv2D(81, 1, 1, 'same', activation='swish')(x)
+        x = keras.layers.Reshape(target_shape=(9, 9, 9, 9))(x)
+        policy = layers.Conv3D(9, 3, 1, 'same', activation='softmax')(x)
+        # Define the model
+        model = tf.keras.Model(inputs=inputs, outputs=[value, policy])
+
+        return model
+    
+
+    @staticmethod
+    def create_model_old(board_size: tuple[int, int]
                      ) -> tuple[keras.Model, keras.optimizers.Optimizer]:
+        # Old model - my implementation but not anymore supported
         # 1 channel for the current player and 1 for the current state
         input_shape = (PREVIOUS_STATE_TO_MODEL + 2, board_size[0], board_size[1])
         input_layer = keras.Input(input_shape) 
@@ -245,7 +334,8 @@ class ModelUtil:
         x = layers.Conv2D(81, 3, 1, 'same', activation='swish',
                           kernel_regularizer=keras.regularizers.l2(0.01))(x)
         x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(tf.reshape(x, (-1,9,9,9,9)))
+                          kernel_regularizer=keras.regularizers.l2(0.01))(
+            tf.reshape(x, (-1,9,9,9,9)))
         x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
                           kernel_regularizer=keras.regularizers.l2(0.01))(x_p)
         
@@ -291,9 +381,16 @@ class ModelUtil:
         config['current_iteration'] += 1
         with open(config_file_path, 'w') as f:
             json.dump(config, f)
-
+    @staticmethod
+    def player_wins(player: str, path: str='alpha_zero'):
+        with open(os.path.join(path, 'config.json'), 'r') as f:
+            config = json.load(f)
+        config['wins'].append(player)
+        with open(os.path.join(path, 'config.json'), 'w') as f:
+            json.dump(config, f)
     @staticmethod
     def predict(model: tuple[keras.Model, keras.optimizers.Optimizer], data):
+        data = tf.expand_dims(data, axis=0)
         value, policy = model[0].predict(data, verbose=0)
         return value, policy
 
@@ -312,8 +409,10 @@ class ModelUtil:
                     cache_folder: str='alpha_zero',
                     batch_size: int=32,
                     step_for_epoch: int=100,
-                    epochs: int=1):
-        
+                    epochs: int=1,
+                    winner: str=-1):
+        if winner >= 0:
+            ModelUtil.player_wins(winner, cache_folder)
         model, optimizer = model
         if cache is not None:
             ModelUtil.save_cache(cache, cache_folder)
@@ -322,8 +421,6 @@ class ModelUtil:
             ModelUtil.get_last_samples(cache_folder,
                                        batch_size * step_for_epoch), 0.3
         )
-
-        print(policies_tensor.shape[0] // batch_size)
         for e in range(epochs):
             for batch_start in tqdm(range(0, policies_tensor.shape[0],
                                           batch_size)):
@@ -368,17 +465,15 @@ class ModelUtil:
             data_loaded['policy'].extend(file_policy)
             data_loaded['actions'].extend(file_actions)
             data_loaded['z'].extend(file_z)
-            print(len(data_loaded['z']), number_of_samples)
             if len(data_loaded['z']) >= number_of_samples:
                 
                 data_loaded['state'] = data_loaded['state'][:number_of_samples]
                 data_loaded['policy'] = data_loaded['policy'][:number_of_samples]
                 data_loaded['actions'] = data_loaded['actions'][:number_of_samples]
                 data_loaded['z'] = data_loaded['z'][:number_of_samples]
-                print(len(data_loaded['z']))
                 break
-        
-        state_matrix = tf.concat(data_loaded['state'], axis=0)
+
+        state_matrix = tf.stack(data_loaded['state'], axis=0)
         policy_matrix = tf.stack([policy_to_policy_matrix(p, a)
                          for p, a in zip(data_loaded['policy'],
                                          data_loaded['actions'])], axis=0)
@@ -407,7 +502,8 @@ class ModelUtil:
         return None
 
     @staticmethod
-    def save_cache(cache: list[list], folder_path: str, cache_mb_size:int=20):
+    def save_cache(cache: list[list], folder_path: str,
+                   cache_mb_size:int=20):
         # Made with ChatGPT ;)
         # Find the latest cache file in the folder
         latest_cache_file = None

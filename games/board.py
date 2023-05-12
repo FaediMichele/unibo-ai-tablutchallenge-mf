@@ -29,7 +29,7 @@ class Board:
     def select_state(self, state):
         self.state = state
         if self.show_board:
-            self.print_board(state)
+            self.print_board()
         
     def restart(self, new_board=None):
         if new_board is None:
@@ -53,12 +53,12 @@ class Board:
     def run_manager_function(self, func):
         self.scheduler.append(func)
 
-    def print_board(self, state):
+    def print_board(self):
+        value_char = {-1:'B', 0:' ', 1:'W', 2:"K"}
         print()
-        print("    0  1  2  3  4  5  6  7  8")
-        for k in range(len(state[1])):
-            line = chr(ord("a")+k)+"   "
-            for i in range(len(state[1][k])):
-                line += str(state[1][k][i]) + \
-                    ("  " if state[1][k][i] >= 0 else " ")
+        print(f"Turn of player {self.state.player}")
+        print("    0 1 2 3 4 5 6 7 8\n")
+        for k in range(len(self.state[1])):
+            line = chr(ord("a")+k) + "   "
+            line += " ".join([value_char[i] for i in  self.state[1][k]])
             print(line)
