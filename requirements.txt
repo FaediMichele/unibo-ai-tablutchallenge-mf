@@ -22,3 +22,6 @@ six
 urllib3
 virtualenv
 wrapt
+termcolor
+tensorflow
+keras

@@ -1,9 +1,10 @@
-from games.tablut.players.alpha_tablut_zero import AlphaTablutZero, ModelUtil, model
+from games.tablut.players.alphazero.alpha_tablut_zero import AlphaTablutZero, ModelUtil
 
 
 def main():
-    player = AlphaTablutZero(None, None, None, 0)
-    ModelUtil.train_model(model, None)
+    model = ModelUtil.load_model()
+    ModelUtil.train_model(model, epochs=20)
+    ModelUtil.save_model(model)
 
 
 if __name__ == '__main__':

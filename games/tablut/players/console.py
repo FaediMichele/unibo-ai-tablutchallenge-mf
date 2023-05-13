@@ -15,17 +15,7 @@ class Console(Player):
         '''
         super(Console, self).__init__(make_move, board, game, player)
 
-    def print_board(self, state):
-        print("    0  1  2  3  4  5  6  7  8")
-        for k in range(len(state[1])):
-            line = chr(ord("a")+k)+"   "
-            for i in range(len(state[1][k])):
-                line += str(state[1][k][i]) + \
-                    ("  " if state[1][k][i] >= 0 else " ")
-            print(line)
-
     def next_action(self, last_action, state_history: list[State]):
-        self.print_board(self.board.state)
         while True:
             string = input(
                 f"Player {self.player} turn. Last action: {last_action}. Your move: ")

@@ -14,7 +14,7 @@ def zeros_matrix(shape):
 class Board:
     ''' Class that represent the environment the player are playing.'''
 
-    def __init__(self, initial_state=zeros_matrix((9, 9)), show_board=False):
+    def __init__(self, initial_state=zeros_matrix((9, 9))):
         ''' Create the board with an initial state
 
         Keyword arguments:
@@ -24,12 +24,10 @@ class Board:
         self.initial_state = initial_state
         self.state = initial_state
         self.scheduler = []
-        self.show_board = show_board
 
     def select_state(self, state):
         self.state = state
-        if self.show_board:
-            self.print_board()
+        
         
     def restart(self, new_board=None):
         if new_board is None:
@@ -53,12 +51,4 @@ class Board:
     def run_manager_function(self, func):
         self.scheduler.append(func)
 
-    def print_board(self):
-        value_char = {-1:'B', 0:' ', 1:'W', 2:"K"}
-        print()
-        print(f"Turn of player {self.state.player}")
-        print("    0 1 2 3 4 5 6 7 8\n")
-        for k in range(len(self.state[1])):
-            line = chr(ord("a")+k) + "   "
-            line += " ".join([value_char[i] for i in  self.state[1][k]])
-            print(line)
+    

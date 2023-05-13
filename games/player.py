@@ -1,11 +1,10 @@
 import random
 from games.board import Board
-from games.game import Game
+from games.game import Game, State, Action
 import logging
 from collections.abc import Callable
 from typing import Union
-State = tuple[str, list[list[int]]]
-Action = tuple[int, int, int, int]
+
 
 
 class Player:
