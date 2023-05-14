@@ -1,3 +1,12 @@
+import logging
+import warnings
+import os
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings("ignore")
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
 
 import tensorflow as tf
 import random
@@ -14,7 +23,7 @@ from games.game import Game, State, Action
 from games.player import Player
 from .util import state_hashable, argmax, unhash_state, policy_matrix_to_policy, PREVIOUS_STATE_TO_MODEL
 from .tree import Tree
-from .model import ModelUtil
+from .model import Model
 
 class AlphaTablutZero(Player):
     ''' Player that take random actions '''
@@ -23,7 +32,8 @@ class AlphaTablutZero(Player):
                  board: Board,
                  game: Game,
                  player: int,
-                 greedy: bool=False,
+                 model: Model,
+                 training: bool=False,
                  ms_for_search: int=5000):
         """Create a new player tha play randomly
 
@@ -40,8 +50,8 @@ class AlphaTablutZero(Player):
         self.ms_for_search = ms_for_search
         self.cache = []
         self.tree = None
-        self.greedy = greedy
-        self.model = ModelUtil.load_model()
+        self.training = training
+        self.model = model
         super(Player, self).__init__()
 
     def next_action(self, last_action: Action, state_history: list[State]):
@@ -60,12 +70,13 @@ class AlphaTablutZero(Player):
             else:
                 self.tree = Tree(self.player, self.board.state)
         gc.collect()
-        policy = self._mcts(self.tree, state_history, self.ms_for_search)
-        if self.greedy:
-            self.make_move(self.tree.actions[argmax(policy)])
-        else:
+        policy = self._mcts(self.tree, state_history, self.ms_for_search,
+                            training=self.training)
+        if self.training:
             self.make_move(random.choices(self.tree.actions,
                                           policy)[0])
+        else:
+            self.make_move(self.tree.actions[argmax(range(len(policy)), key=lambda x: policy[x])])
 
     def end(self, last_action: Action, winning: str):
         """Called when a player wins.
@@ -78,7 +89,8 @@ class AlphaTablutZero(Player):
             evaluation.append(1.0 if winning == self.player else -1.0)
 
     def _mcts(self, root: Tree, state_history: list[State],
-              ms_for_search: int, temperature: float=1.0) ->list[float]:
+              ms_for_search: int, temperature: float=1.0, training=False
+              ) ->list[float]:
         
         if root.actions is None:
             root.actions = tuple(self.game.actions(root.state))
@@ -111,16 +123,19 @@ class AlphaTablutZero(Player):
                 p, v = self._evaluate_state(s, state_history)
                 self._expand(s, p)
                 self._backup(s, v)
+            else:
+                print(f"found terminal state. {s.parent_action[0].N[a_star]}")
         print(f"node visited: {c}, depth reached: {tree_depth}")
         count_action_taken = [root.N[a] ** (1 / temperature)
                               for a in root.actions]
         denominator_policy = sum(count_action_taken)
         policy = [(t ** (1 / temperature)) / denominator_policy for t in count_action_taken]
-        self.cache.append([
-            root_tensor,
-            policy,
-            root.actions
-        ])
+        if training:
+            self.cache.append([
+                root_tensor,
+                policy,
+                root.actions
+            ])
         return policy
 
     def _expand(self, state_tree: Tree, policy: list[float]):
@@ -150,9 +165,8 @@ class AlphaTablutZero(Player):
                 return [], state_value
 
         state_transformed = state_tree.transform(state_history)
-        state_value, policy = ModelUtil.predict(self.model,
-                                                state_transformed)
-        policy = policy_matrix_to_policy(policy[0], state_tree.actions)
+        state_value, policy = self.model.predict(state_transformed)
+        policy = policy_matrix_to_policy(policy, state_tree.actions)
 
         if return_state_transformed:
             return policy, state_value, state_transformed

@@ -1,10 +1,20 @@
-from games.tablut.players.alphazero.alpha_tablut_zero import AlphaTablutZero
-from games.tablut.players.alphazero.model import ModelUtil
+import logging
+import warnings
+import os
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings("ignore")
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
+
+from games.tablut.players.alpha_reinforce import AlphaTablutReinforce, Model
 from games.tablut.game import Game
 from games.tablut.console_board import ConsoleBoard
 from games.board import Board
 from games.player import Player, Action
 from functools import partial
+import datetime
 import gc
 import random
 
@@ -25,19 +35,20 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
         player_to_move.end(action, opponent.player)
         opponent.end(action, player_to_move.player)
         print("Game too long")
-        # ModelUtil.train_model(player_to_move.model, player_to_move.cache + 
-        #                       opponent.cache)
-        # ModelUtil.save_model(player_to_move.model)
+        # player_to_move.model.save_cache(player_to_move.cache + opponent.cache)
+        # player_to_move.model.player_wins('D')
+        # player_to_move.model.train_model()
+        # player_to_move.model.save_model()
         
     elif game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
         player_to_move.end(action, opponent.player)
         opponent.end(action, opponent.player)
         print("Game ended with a winner")
-        ModelUtil.train_model(player_to_move.model,
-                              player_to_move.cache +
-                              opponent.cache,
-                              winner='W' if new_state[0] == 1 else 'B')
-        ModelUtil.save_model(player_to_move.model)
+        if player_to_move.training:
+            player_to_move.model.save_cache(player_to_move.cache + opponent.cache)
+            player_to_move.model.player_wins('W' if new_state[0] == 1 else 'B')
+            player_to_move.model.train_model()
+            player_to_move.model.save_model()
     else:
         player_to_move.next_action(action, state_history)
 
@@ -62,22 +73,26 @@ def main():
                                    player_manager(board, game,
                                                   player1, player2,
                                                   action))
+        
+    model = Model()
 
-    player1 = AlphaTablutZero(make_move, board, game, 0,
-                              greedy=False, ms_for_search=10000)
-    player2 = AlphaTablutZero(make_move, board, game, 1,
-                              greedy=False, ms_for_search=10000)
+    player1 = AlphaTablutReinforce(make_move, board, game, 0, model,
+                              training=True, ms_for_search=5000)
+    player2 = AlphaTablutReinforce(make_move, board, game, 1, model,
+                              training=True, ms_for_search=5000)
 
     on_ready = partial(loaded, board, game, player1, player2)
-
+    start_timer = datetime.datetime.now()
     def on_end_of_game():
-        global state_history
-        state_history = []
-        player1.cache = []
-        player2.cache = []
-        gc.collect()
-        board.restart(game.create_root(random.randint(0, 1)))
-        on_ready()
+        # 6 Hours
+        if (datetime.datetime.now() - start_timer).total_seconds() < 21600:
+            global state_history
+            state_history = []
+            player1.cache = []
+            player2.cache = []
+            gc.collect()
+            board.restart(game.create_root(random.randint(0, 1)))
+            on_ready()
 
     board.event.on("loaded", on_ready)
     board.event.on("end_of_game", on_end_of_game)

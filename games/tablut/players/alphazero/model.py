@@ -9,17 +9,205 @@ import pickle
 
 from .util import policy_to_policy_matrix, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATIONS
 
-loaded_model: tuple[keras.Model, keras.optimizers.Optimizer] = None
-
-class ModelUtil:
+class Model:
     # TODO do a reg net instead
-    @staticmethod
-    def create_model(board_size: tuple[int, int]) -> keras.Model:
+    def __init__(self, path: str='alpha_zero') -> None:
+        self.model: keras.Model = None
+        self.optimizer: keras.optimizers.Optimizer = None
+        self.path = path
+        self.load_model()
+
+    def load_model(self):
+        if self.optimizer is None:
+            self.optimizer = keras.optimizers.Adam()
+        current_model_path = self.get_last_model_path()
+        if current_model_path is not None:
+            model = keras.models.load_model(current_model_path, compile=False)
+        else:
+            model = self.create_model()
+        self.model = model
+
+    
+    def save_model(self):
+        config = self.load_config_file()
+        current_model_path = os.path.join(self.path, config['current'])
+        self.model.save(current_model_path, save_format='tf')
+        if len(config['wins']) in SAVE_ITERATIONS:
+            self.model.save(os.path.join(self.path,
+                                         f'old_model_{len(config["wins"])}'),
+                                         save_format='tf')
+        self.save_config_file(config)
+
+    def load_config_file(self) -> dict:
+        config_path = os.path.join(self.path, 'config.json')
+        if os.path.isfile(config_path):
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        else:
+            config = {
+                    'current': 'last_model',
+                    'wins': []
+            }
+            with open(config_path, 'w') as f:
+                json.dump(config, f)
+            return config
+        
+    def save_config_file(self, config: dict):
+        config_path = os.path.join(self.path, 'config.json')
+        with open(config_path, 'w') as f:
+            json.dump(config, f)
+    
+    def player_wins(self, player: str):
+        config = self.load_config_file()
+        config['wins'].append(player)
+        self.save_config_file(config)
+
+    def predict(self, data):
+        data = tf.expand_dims(data, axis=0)
+        value, policy = self.model.predict(data, verbose=0)
+        if tf.reduce_any(tf.math.is_nan(policy)):
+            print(data, "\n", policy)
+            raise ValueError('keras.model.predict returned value with NaN\n'
+                             f"Input data: {data}\nPrediction: {value, policy}")
+        return value[0][0], policy[0]
+
+    @tf.function
+    def loss_fn(self, pi, z, v, p):
+        mse = keras.losses.mean_squared_error(z, v)
+        pi, p = tf.reshape(pi, (pi.shape[0],-1)), tf.reshape(p, (p.shape[0],-1))
+        cross_entropy = keras.losses.categorical_crossentropy(pi, p)
+        penalty = sum(self.model.losses)
+        return mse + cross_entropy + penalty
+    
+    def train_model(self,
+                    batch_size: int=32,
+                    step_for_epoch: int=100,
+                    epochs: int=1):
+
+        last_samples = self.get_last_samples(batch_size * step_for_epoch)
+        
+        for e in range(epochs):
+            states_tensor, policies_tensor, zs_tensor  = self.sample(
+            last_samples, 0.25)
+            for batch_start in tqdm(range(0, policies_tensor.shape[0],
+                                          batch_size)):
+                batch_state = states_tensor[batch_start:batch_start +\
+                                                   batch_size]
+                batch_policy = policies_tensor[batch_start:batch_start + batch_size]
+                batch_z = zs_tensor[batch_start:batch_start + batch_size]
+
+                with tf.GradientTape() as tape:
+                    v_pred, p_pred = self.model(batch_state, training=True)
+                    loss = self.loss_fn(batch_policy, batch_z, v_pred, p_pred)
+                grads = tape.gradient(loss, self.model.trainable_weights)
+                self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+            
+            print(f"Done epoch {e+1}/{epochs}")
+
+    def get_last_samples(self, number_of_samples: int=100_000) -> tuple[list[tf.Tensor], list[tf.Tensor], list[tf.Tensor]]:
+        file_indexes = []
+        for filename in os.listdir(self.path):
+            if filename.startswith("cache_") and filename.endswith(".pickle"):
+                try:
+                    n = int(filename[len("cache_"):-len(".pickle")])
+                    file_indexes.append((filename, n))
+                except ValueError:
+                    pass  # Ignore non-integer filenames
+
+        data_loaded = {
+            'state': [],
+            'policy': [],
+            'actions': [],
+            'z': []
+        }
+        for filename, _ in sorted(file_indexes, key=lambda x: x[1],
+                                  reverse=True):
+            with open(os.path.join(self.path, filename), "rb") as f:
+                file_data = pickle.load(f)
+
+            file_state, file_policy, file_actions, file_z = zip(*file_data)
+            data_loaded['state'].extend(file_state)
+            data_loaded['policy'].extend(file_policy)
+            data_loaded['actions'].extend(file_actions)
+            data_loaded['z'].extend(file_z)
+            if len(data_loaded['z']) >= number_of_samples:
+                
+                data_loaded['state'] = data_loaded['state'][:number_of_samples]
+                data_loaded['policy'] = data_loaded['policy'][:number_of_samples]
+                data_loaded['actions'] = data_loaded['actions'][:number_of_samples]
+                data_loaded['z'] = data_loaded['z'][:number_of_samples]
+                break
+
+        state_matrix = tf.stack(data_loaded['state'], axis=0)
+        policy_matrix = tf.stack([policy_to_policy_matrix(p, a)
+                         for p, a in zip(data_loaded['policy'],
+                                         data_loaded['actions'])], axis=0)
+        z_matrix = tf.constant(data_loaded['z'], shape=(len(data_loaded['z']), 1))
+        return state_matrix, policy_matrix, z_matrix
+
+    def sample(self, samples: tuple, final_size: float) -> tuple:
+        states, policies, zs = samples
+        num_element = int(states.shape[0] * final_size)
+        sum_prob = states.shape[0] * (states.shape[0] + 1) / 2
+        choiches = np.random.choice(range(0, states.shape[0]), num_element,
+                         p=[i/sum_prob for i in range(1, states.shape[0]+1)])
+        mask = [i in choiches for i in range(0, states.shape[0])]
+        return (tf.boolean_mask(states, mask),
+                tf.boolean_mask(policies, mask),
+                tf.boolean_mask(zs, mask))
+    
+    def get_last_model_path(self) -> str | None:
+        config = self.load_config_file()
+        current_model_path = os.path.join(self.path, config['current'])
+        if os.path.isdir(current_model_path):
+            return current_model_path
+        return None
+
+    def save_cache(self, cache: list[list], cache_mb_size:int=20):
+        # Made with ChatGPT ;)
+        # Find the latest cache file in the folder
+        latest_cache_file = None
+        latest_cache_n = -1
+        for filename in os.listdir(self.path):
+            if filename.startswith("cache_") and filename.endswith(".pickle"):
+                try:
+                    n = int(filename[len("cache_"):-len(".pickle")])
+                    if n > latest_cache_n:
+                        latest_cache_n = n
+                        latest_cache_file = os.path.join(self.path, filename)
+                except ValueError:
+                    pass  # Ignore non-integer filenames
+        
+        # If there's no cache file in the folder, start from scratch
+        if latest_cache_file is None:
+            cache_filename = os.path.join(self.path, "cache_0.pickle")
+            cache_data = []
+        else:
+            # Check if the latest cache file is too big
+            if os.path.getsize(latest_cache_file) > cache_mb_size * 1024 * 1024:
+                # If the latest cache file is too big, create a new one
+                cache_filename = os.path.join(self.path,
+                                              f"cache_{latest_cache_n+1}.pickle")
+                cache_data = []
+            else:
+                # Load the latest cache file
+                with open(latest_cache_file, "rb") as f:
+                    cache_data = pickle.load(f)
+
+                # Otherwise, append to the latest cache file
+                cache_filename = latest_cache_file
+        
+        # Append the new data to the cache
+        cache_data.extend(cache)
+        with open(cache_filename, "wb") as f:
+            pickle.dump(cache_data, f)
+
+    def create_model(self) -> keras.Model:
         # Made with ChatGPT with few corrections ;) - inspired by RegNetY
         # Define the input layer
 
         # history + current_state + state_player + playing player
-        input_shape = (board_size[0], board_size[1], PREVIOUS_STATE_TO_MODEL + 3)
+        input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 3)
         inputs = tf.keras.Input(shape=input_shape)
 
         # Define the base width, slope, and expansion factor parameters for RegNetY-200MF
@@ -83,19 +271,18 @@ class ModelUtil:
         value = layers.Dense(1, 'linear')(value)
 
         # Extract the policy
-        policy = layers.Conv2D(18, 1, 1, 'same', activation='swish')(x)
+        policy = layers.Conv2D(18, 1, 1, 'same', activation='softmax')(x)
         # Define the model
         model = tf.keras.Model(inputs=inputs, outputs=[value, policy])
 
         return model
     
 
-    @staticmethod
-    def create_model_old(board_size: tuple[int, int]
-                     ) -> tuple[keras.Model, keras.optimizers.Optimizer]:
+
+    def create_model_old(self) -> tuple[keras.Model, keras.optimizers.Optimizer]:
         # Old model - my implementation but not anymore supported
         # 1 channel for the current player and 1 for the current state
-        input_shape = (board_size[0], board_size[1], PREVIOUS_STATE_TO_MODEL + 3)
+        input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 3)
         input_layer = keras.Input(input_shape) 
         x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(input_layer)
         x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(x)
@@ -112,218 +299,3 @@ class ModelUtil:
         model = keras.Model(inputs=input_layer, outputs=[value, policy])
         model.compile()
         return model
-
-    @staticmethod
-    def load_model(path: str='alpha_zero', board_size: tuple[int, int]=(9, 9)
-                   ) -> tuple[keras.Model, keras.optimizers.Optimizer]:
-        
-        global loaded_model
-        if loaded_model is not None:
-            return loaded_model
-        
-        current_model_path = ModelUtil.get_last_model_path(path)
-
-        optimizer = keras.optimizers.Adam()
-        if current_model_path is not None:
-            model = keras.models.load_model(current_model_path, compile=False)
-        else:
-            model = ModelUtil.create_model(board_size)
-
-        loaded_model = (model, optimizer)
-        return loaded_model
-
-    
-    @staticmethod
-    def save_model(model: tuple[keras.Model, keras.optimizers.Optimizer],
-                   path: str='alpha_zero'):
-        config = ModelUtil.load_config_file(path)
-       
-        current_iteration = config['current_iteration']
-        current_model_path = config['current']
-        model[0].save(os.path.join(path, current_model_path))
-
-        if current_iteration in SAVE_ITERATIONS:
-            model[0].save(os.path.join(path, f'old_model_{current_iteration}'))
-
-        config['current_iteration'] += 1
-        with open(os.path.join(path, 'config.json'), 'w') as f:
-            json.dump(config, f)
-
-    @staticmethod
-    def load_config_file(path: str='alpha_zero') -> dict:
-        if os.path.isfile(os.path.join(path, 'config.json')):
-            with open(os.path.join(path, 'config.json'), 'r') as f:
-                return json.load(f)
-        else:
-            config = {
-                    'current_iteration': 0,
-                    'current': 'last_model',
-                    'wins': []
-            }
-            with open(os.path.join(path, 'config.json'), 'w') as f:
-                json.dump(config, f)
-            return config
-
-    @staticmethod
-    def player_wins(player: str, path: str='alpha_zero'):
-        config = ModelUtil.load_config_file(path)
-        config['wins'].append(player)
-        with open(os.path.join(path, 'config.json'), 'w') as f:
-            json.dump(config, f)
-
-    @staticmethod
-    def predict(model: tuple[keras.Model, keras.optimizers.Optimizer], data):
-        data = tf.expand_dims(data, axis=0)
-        value, policy = model[0].predict(data, verbose=0)
-        return value, policy
-
-    @staticmethod
-    @tf.function
-    def loss_fn(model, pi, z, v, p):
-        mse = keras.losses.mean_squared_error(z, v)
-        pi, p = tf.reshape(pi, (pi.shape[0],-1)), tf.reshape(p, (p.shape[0],-1))
-        cross_entropy = keras.losses.categorical_crossentropy(pi, p)
-        penalty = sum(model.losses)
-        return mse + cross_entropy + penalty
-
-    @staticmethod
-    def train_model(model: tuple[keras.Model, keras.optimizers.Optimizer],
-                    cache: list[dict]=None,
-                    cache_folder: str='alpha_zero',
-                    batch_size: int=32,
-                    step_for_epoch: int=1000,
-                    epochs: int=1,
-                    winner: str=None):
-        
-        model, optimizer = model
-        if cache is not None:
-            ModelUtil.save_cache(cache, cache_folder)
-
-        if winner is not None:
-            ModelUtil.player_wins(winner, cache_folder)
-
-        last_samples = ModelUtil.get_last_samples(cache_folder,
-                                       batch_size * step_for_epoch)
-        
-        for e in range(epochs):
-            states_tensor, policies_tensor, zs_tensor  = ModelUtil.sample(
-            last_samples, 0.25)
-            for batch_start in tqdm(range(0, policies_tensor.shape[0],
-                                          batch_size)):
-                batch_state = states_tensor[batch_start:batch_start +\
-                                                   batch_size]
-                batch_policy = policies_tensor[batch_start:batch_start + batch_size]
-                batch_z = zs_tensor[batch_start:batch_start + batch_size]
-                with tf.GradientTape() as tape:
-                    v_pred, p_pred = model(batch_state, training=True)
-                    loss = ModelUtil.loss_fn(model, batch_policy, batch_z, v_pred, p_pred)
-                
-                grads = tape.gradient(loss, model.trainable_weights)
-                optimizer.apply_gradients(zip(grads, model.trainable_weights))
-            
-            print(f"Done epoch {e+1}/{epochs}")
-
-    @staticmethod
-    def get_last_samples(folder_path: str, number_of_samples: int=100_000
-                         ) -> tuple[list[tf.Tensor], list[tf.Tensor], list[tf.Tensor]]:
-        file_indexes = []
-        for filename in os.listdir(folder_path):
-            if filename.startswith("cache_") and filename.endswith(".pickle"):
-                try:
-                    n = int(filename[len("cache_"):-len(".pickle")])
-                    file_indexes.append((filename, n))
-                except ValueError:
-                    pass  # Ignore non-integer filenames
-
-        data_loaded = {
-            'state': [],
-            'policy': [],
-            'actions': [],
-            'z': []
-        }
-        for filename, _ in sorted(file_indexes, key=lambda x: x[1],
-                                  reverse=True):
-            with open(os.path.join(folder_path, filename), "rb") as f:
-                file_data = pickle.load(f)
-
-            file_state, file_policy, file_actions, file_z = zip(*file_data)
-            data_loaded['state'].extend(file_state)
-            data_loaded['policy'].extend(file_policy)
-            data_loaded['actions'].extend(file_actions)
-            data_loaded['z'].extend(file_z)
-            if len(data_loaded['z']) >= number_of_samples:
-                
-                data_loaded['state'] = data_loaded['state'][:number_of_samples]
-                data_loaded['policy'] = data_loaded['policy'][:number_of_samples]
-                data_loaded['actions'] = data_loaded['actions'][:number_of_samples]
-                data_loaded['z'] = data_loaded['z'][:number_of_samples]
-                break
-
-        state_matrix = tf.stack(data_loaded['state'], axis=0)
-        policy_matrix = tf.stack([policy_to_policy_matrix(p, a)
-                         for p, a in zip(data_loaded['policy'],
-                                         data_loaded['actions'])], axis=0)
-        z_matrix = tf.constant(data_loaded['z'], shape=(len(data_loaded['z']), 1))
-        return state_matrix, policy_matrix, z_matrix
-    
-    @staticmethod
-    def sample(samples: tuple, final_size: float) -> tuple:
-        states, policies, zs = samples
-        num_element = int(states.shape[0] * final_size)
-        sum_prob = states.shape[0] * (states.shape[0] + 1) / 2
-        choiches = np.random.choice(range(0, states.shape[0]), num_element,
-                         p=[i/sum_prob for i in range(1, states.shape[0]+1)])
-        mask = [i in choiches for i in range(0, states.shape[0])]
-        return (tf.boolean_mask(states, mask),
-                tf.boolean_mask(policies, mask),
-                tf.boolean_mask(zs, mask))
-    
-    @staticmethod
-    def get_last_model_path(folder_path: str='alpha_zero') -> str | None:
-        if os.path.isfile(os.path.join(folder_path, 'config.json')):
-            with open(os.path.join(folder_path, 'config.json'), 'r') as f:
-                config = json.load(f)
-            if os.path.isdir(os.path.join(folder_path, config['current'])):
-                return os.path.join(folder_path, config['current'])
-        return None
-
-    @staticmethod
-    def save_cache(cache: list[list], folder_path: str,
-                   cache_mb_size:int=20):
-        # Made with ChatGPT ;)
-        # Find the latest cache file in the folder
-        latest_cache_file = None
-        latest_cache_n = -1
-        for filename in os.listdir(folder_path):
-            if filename.startswith("cache_") and filename.endswith(".pickle"):
-                try:
-                    n = int(filename[len("cache_"):-len(".pickle")])
-                    if n > latest_cache_n:
-                        latest_cache_n = n
-                        latest_cache_file = os.path.join(folder_path, filename)
-                except ValueError:
-                    pass  # Ignore non-integer filenames
-        
-        # If there's no cache file in the folder, start from scratch
-        if latest_cache_file is None:
-            cache_filename = os.path.join(folder_path, "cache_0.pickle")
-            cache_data = []
-        else:
-            # Check if the latest cache file is too big
-            if os.path.getsize(latest_cache_file) > cache_mb_size * 1024 * 1024:
-                # If the latest cache file is too big, create a new one
-                cache_filename = os.path.join(folder_path,
-                                              f"cache_{latest_cache_n+1}.pickle")
-                cache_data = []
-            else:
-                # Load the latest cache file
-                with open(latest_cache_file, "rb") as f:
-                    cache_data = pickle.load(f)
-
-                # Otherwise, append to the latest cache file
-                cache_filename = latest_cache_file
-        
-        # Append the new data to the cache
-        cache_data.extend(cache)
-        with open(cache_filename, "wb") as f:
-            pickle.dump(cache_data, f)
