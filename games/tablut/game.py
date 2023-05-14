@@ -1,11 +1,11 @@
 import copy
 
-from games.game import Game as Gm
+#from games.game import Game as Gm
 infinity = int(1e9)
 # example action: (start_row_id, start_column_id, dest_row_id, dest_column_id)
 # example state: (player_turn, map)
 Board = list[list[int]]
-State = tuple[str, Board]
+State = tuple[int, Board, int]
 Action = tuple[int, int, int, int]
 
 
@@ -13,7 +13,7 @@ def copy_matrix(matrix: Board):
     return copy.deepcopy(matrix)
 
 
-class Game(Gm):
+class Game():
     ''' Class that contains rules for the Tablut game'''
 
     black = -1
@@ -49,8 +49,8 @@ class Game(Gm):
                           0: {"king": 5, "soldier": 10, "king_position": 20}}
     weight_king = 5
 
-    def create_root(self, player: str) -> Board:
-        return (player, copy_matrix(self.__empty_board))
+    def create_root(self, player: int, max_game_length=-1_000_000) -> Board:
+        return (player, copy_matrix(self.__empty_board), max_game_length)
 
     def where(self, matrix: Board, condition: list[int]) -> list[tuple[int, int]]:
         return [(i, j) for i in range(len(matrix)) for j in range(len(matrix[i])) if matrix[i][j] in condition]
@@ -112,7 +112,7 @@ class Game(Gm):
             for cardinal in [(position[0]-1, position[1]), (position[0]+1, position[1]), (position[0], position[1]-1), (position[0], position[1]+1)]:
                 # direction is possible if don't exit the grid and don't go in castle
                 if min(cardinal) >= 0 and max(cardinal) <= 8 and state[1][cardinal[0]][cardinal[1]] == 0 and cardinal != (4, 4) and cardinal not in self.camp_list:
-                    actions.append(position+cardinal)
+                    actions.append((position[0], position[1], cardinal[0], cardinal[1]))
         return actions
 
     def actions(self, state: State) -> list[Action]:
@@ -127,7 +127,7 @@ class Game(Gm):
         # TODO calculate capture and new state
 
         # may be wise to disable this check
-        actions = self.get_piece_actions(state, (action[0], action[1]))
+        actions = self.actions(state)
         if action not in actions:
             raise Exception("Action not allowed", state, action, actions)
 
@@ -162,7 +162,7 @@ class Game(Gm):
             elif cardinal[0] not in self.camp_list and not (board[cardinal[0][0]][cardinal[0][1]] == self.king and board[action[2]][action[3]] == self.black and cardinal[0] in [(3, 4), (4, 3), (5, 4), (4, 5), (4, 4)]) and (board[cardinal[0][0]][cardinal[0][1]] != board[action[2]][action[3]] and not (board[action[2]][action[3]] == self.king and board[cardinal[0][0]][cardinal[0][1]] == self.white or board[action[2]][action[3]] == self.white and board[cardinal[0][0]][cardinal[0][1]] == self.king)) and ((board[action[2]][action[3]] == board[cardinal[1][0]][cardinal[1][1]] or (board[action[2]][action[3]] == self.white and board[cardinal[1][0]][cardinal[1][1]] == self.king or board[action[2]][action[3]] == self.king and board[cardinal[1][0]][cardinal[1][1]] == self.white)) or (cardinal[1] == (4, 4) or cardinal[1] in self.camp_list)):
                 board[cardinal[0][0]][cardinal[0][1]] = 0
 
-        return ((state[0]+1) % 2, board)
+        return ((state[0]+1) % 2, board, state[2] + 1)
 
     def h(self, state: State, player: int, min_max: bool) -> float:
         num_white = len(self.where(state[1], [self.white]))
@@ -184,6 +184,8 @@ class Game(Gm):
                                self.__weight_heuristic[min_max_player]["king_position"] * king_pos_value)
 
     def is_terminal(self, state: State) -> bool:
+        if state[2] >= 0:
+            return True
         king_pos = self.where(state[1], [self.king])
         if len(king_pos) == 0:
             return True
@@ -212,4 +214,9 @@ class Game(Gm):
 
 
 if __name__ == '__main__':
+    # (1, [[0, 0, 0, -1, -1, -1, 0, 0, 0], [0, 0, 0, 0, -1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, -1, 0], [-1, 0, 0, 0, 1, 0, 0, 0, -1], [-1, -1, 1, 0, 2, 1, 1, 0, -1], [-1, 0, 0, 0, 1, 0, 0, 0, -1], [0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 1, -1, 0, 0, 0, 0], [0, 0, 0, -1, -1, -1, 0, 0, 0]], -1998), (3, 7, 2, 7), [(3, 7, 3, 6), (3, 7, 3, 5)])
+    # state = (1, [[0, 0, 0, -1, -1, -1, 0, 0, 0], [0, 0, 0, 0, -1, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, -1, 0], [-1, 0, 0, 0, 1, 0, 0, 0, -1], [-1, -1, 1, 0, 2, 1, 1, 0, -1], [-1, 0, 0, 0, 1, 0, 0, 0, -1], [0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 1, -1, 0, 0, 0, 0], [0, 0, 0, -1, -1, -1, 0, 0, 0]], -1998)
+    # action = (3,7,2,7)
+
+    # print(Game().actions(state))
     pass

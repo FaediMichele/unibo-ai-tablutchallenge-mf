@@ -83,9 +83,7 @@ class ModelUtil:
         value = layers.Dense(1, 'linear')(value)
 
         # Extract the policy
-        x = layers.Conv2D(81, 1, 1, 'same', activation='swish')(x)
-        x = keras.layers.Reshape(target_shape=(9, 9, 9, 9))(x)
-        policy = layers.Conv3D(9, 3, 1, 'same', activation='softmax')(x)
+        policy = layers.Conv2D(18, 1, 1, 'same', activation='swish')(x)
         # Define the model
         model = tf.keras.Model(inputs=inputs, outputs=[value, policy])
 
@@ -97,7 +95,7 @@ class ModelUtil:
                      ) -> tuple[keras.Model, keras.optimizers.Optimizer]:
         # Old model - my implementation but not anymore supported
         # 1 channel for the current player and 1 for the current state
-        input_shape = (PREVIOUS_STATE_TO_MODEL + 2, board_size[0], board_size[1])
+        input_shape = (board_size[0], board_size[1], PREVIOUS_STATE_TO_MODEL + 3)
         input_layer = keras.Input(input_shape) 
         x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(input_layer)
         x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(x)
@@ -138,15 +136,8 @@ class ModelUtil:
     @staticmethod
     def save_model(model: tuple[keras.Model, keras.optimizers.Optimizer],
                    path: str='alpha_zero'):
-        config_file_path = os.path.join(path, 'config.json')
-        if os.path.isfile(config_file_path):
-            with open(os.path.join(path, 'config.json'), 'r') as f:
-                config = json.load(f)
-        else:
-            config = {
-                'current_iteration': 0,
-                'current': 'last_model'
-            }
+        config = ModelUtil.load_config_file(path)
+       
         current_iteration = config['current_iteration']
         current_model_path = config['current']
         model[0].save(os.path.join(path, current_model_path))
@@ -155,13 +146,27 @@ class ModelUtil:
             model[0].save(os.path.join(path, f'old_model_{current_iteration}'))
 
         config['current_iteration'] += 1
-        with open(config_file_path, 'w') as f:
+        with open(os.path.join(path, 'config.json'), 'w') as f:
             json.dump(config, f)
 
     @staticmethod
+    def load_config_file(path: str='alpha_zero') -> dict:
+        if os.path.isfile(os.path.join(path, 'config.json')):
+            with open(os.path.join(path, 'config.json'), 'r') as f:
+                return json.load(f)
+        else:
+            config = {
+                    'current_iteration': 0,
+                    'current': 'last_model',
+                    'wins': []
+            }
+            with open(os.path.join(path, 'config.json'), 'w') as f:
+                json.dump(config, f)
+            return config
+
+    @staticmethod
     def player_wins(player: str, path: str='alpha_zero'):
-        with open(os.path.join(path, 'config.json'), 'r') as f:
-            config = json.load(f)
+        config = ModelUtil.load_config_file(path)
         config['wins'].append(player)
         with open(os.path.join(path, 'config.json'), 'w') as f:
             json.dump(config, f)
@@ -186,20 +191,23 @@ class ModelUtil:
                     cache: list[dict]=None,
                     cache_folder: str='alpha_zero',
                     batch_size: int=32,
-                    step_for_epoch: int=100,
+                    step_for_epoch: int=1000,
                     epochs: int=1,
-                    winner: str=-1):
-        if winner >= 0:
-            ModelUtil.player_wins(winner, cache_folder)
+                    winner: str=None):
+        
         model, optimizer = model
         if cache is not None:
             ModelUtil.save_cache(cache, cache_folder)
 
-        states_tensor, policies_tensor, zs_tensor  = ModelUtil.sample(
-            ModelUtil.get_last_samples(cache_folder,
-                                       batch_size * step_for_epoch), 0.3
-        )
+        if winner is not None:
+            ModelUtil.player_wins(winner, cache_folder)
+
+        last_samples = ModelUtil.get_last_samples(cache_folder,
+                                       batch_size * step_for_epoch)
+        
         for e in range(epochs):
+            states_tensor, policies_tensor, zs_tensor  = ModelUtil.sample(
+            last_samples, 0.25)
             for batch_start in tqdm(range(0, policies_tensor.shape[0],
                                           batch_size)):
                 batch_state = states_tensor[batch_start:batch_start +\

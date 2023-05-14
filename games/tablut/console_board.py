@@ -74,7 +74,7 @@ empty_colored_board =[
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
-        colored('■', 'light_blue'),
+        colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
@@ -121,7 +121,8 @@ class ConsoleBoard(Board):
                       1: colored('W', 'white'),
                       2: colored('K', 'red')}
         print()
-        print(f"Turn of player {('B' if self.state[0] == 1 else 'W')}")
+        print(f"Turn of player {('B' if self.state[0] == 1 else 'W')} - "
+              f"Moves till the end of the match {-self.state[2]}")
         print("    0 1 2 3 4 5 6 7 8\n")
         new_board = deepcopy(empty_colored_board)
         for x in range(9):

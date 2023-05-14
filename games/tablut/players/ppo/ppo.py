@@ -1,7 +1,7 @@
 from games.player import Player, State
 
 
-class Console(Player):
+class PPOPlayer(Player):
     ''' Class for a player using the kivy interface. In order to use this player the board must be games.tablut.board'''
 
     def __init__(self, make_move, board, game, player):
@@ -13,7 +13,7 @@ class Console(Player):
         game -- the game rules
         player -- the the player identification. Can be a number or anything else
         '''
-        super(Console, self).__init__(make_move, board, game, player)
+        super(PPOPlayer, self).__init__(make_move, board, game, player)
 
     def next_action(self, last_action, state_history: list[State]):
         while True:

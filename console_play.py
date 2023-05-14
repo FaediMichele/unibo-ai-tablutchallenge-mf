@@ -1,5 +1,4 @@
-from games.tablut.players.alphazero.alpha_tablut_zero import AlphaTablutZero
-from games.tablut.players.alphazero.model import ModelUtil
+from games.tablut.players.console import Console
 from games.tablut.game import Game
 from games.tablut.console_board import ConsoleBoard
 from games.board import Board
@@ -25,19 +24,11 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
         player_to_move.end(action, opponent.player)
         opponent.end(action, player_to_move.player)
         print("Game too long")
-        # ModelUtil.train_model(player_to_move.model, player_to_move.cache + 
-        #                       opponent.cache)
-        # ModelUtil.save_model(player_to_move.model)
         
     elif game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
         player_to_move.end(action, opponent.player)
         opponent.end(action, opponent.player)
         print("Game ended with a winner")
-        ModelUtil.train_model(player_to_move.model,
-                              player_to_move.cache +
-                              opponent.cache,
-                              winner='W' if new_state[0] == 1 else 'B')
-        ModelUtil.save_model(player_to_move.model)
     else:
         player_to_move.next_action(action, state_history)
 
@@ -53,7 +44,7 @@ def loaded(board: Board, game: Game, player1: Player, player2: Player):
 
 
 def main():
-    maximum_turn = 2000
+    maximum_turn = 400
     game = Game()
     board = ConsoleBoard(initial_state=game.create_root(random.randint(0, 1),
                                                         -maximum_turn))
@@ -63,18 +54,14 @@ def main():
                                                   player1, player2,
                                                   action))
 
-    player1 = AlphaTablutZero(make_move, board, game, 0,
-                              greedy=False, ms_for_search=10000)
-    player2 = AlphaTablutZero(make_move, board, game, 1,
-                              greedy=False, ms_for_search=10000)
+    player1 = Console(make_move, board, game, 0)
+    player2 = Console(make_move, board, game, 1)
 
     on_ready = partial(loaded, board, game, player1, player2)
 
     def on_end_of_game():
         global state_history
         state_history = []
-        player1.cache = []
-        player2.cache = []
         gc.collect()
         board.restart(game.create_root(random.randint(0, 1)))
         on_ready()
