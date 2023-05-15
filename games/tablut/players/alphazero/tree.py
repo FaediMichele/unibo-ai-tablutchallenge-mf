@@ -28,6 +28,7 @@ class Tree:
     def backup(self, value: float):
         if self.parent_action is not None:
             parent, action = self.parent_action
+            
             parent.W[action] += value
             parent.Q[action] = parent.W[action] / parent.N[action]
             parent.backup(value)

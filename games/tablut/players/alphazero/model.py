@@ -6,6 +6,7 @@ import numpy as np
 import json
 import os
 import pickle
+import datetime
 
 from .util import policy_to_policy_matrix, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATIONS
 
@@ -15,6 +16,7 @@ class Model:
         self.model: keras.Model = None
         self.optimizer: keras.optimizers.Optimizer = None
         self.path = path
+        self.first_game = datetime.datetime.now()
         self.load_model()
 
     def load_model(self):
@@ -36,6 +38,17 @@ class Model:
             self.model.save(os.path.join(self.path,
                                          f'old_model_{len(config["wins"])}'),
                                          save_format='tf')
+            
+        if 'last_update' not in config or self.first_game is not None:
+            last_update = self.first_game
+            self.first_game = None
+        else: 
+            last_update = datetime.datetime.strptime(config['last_update'],
+                                                    "%Y-%m-%d %H:%M:%S")
+        config['total_seconds'] += (datetime.datetime.now() - last_update
+                                    ).total_seconds()
+        config['last_update'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         self.save_config_file(config)
 
     def load_config_file(self) -> dict:
@@ -46,7 +59,9 @@ class Model:
         else:
             config = {
                     'current': 'last_model',
-                    'wins': []
+                    'wins': [],
+                    'total_seconds': 0,
+                    'last_update': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             with open(config_path, 'w') as f:
                 json.dump(config, f)
@@ -268,7 +283,8 @@ class Model:
         value = layers.Conv2D(16, 3, 1, activation='swish')(x)
         value = layers.Flatten()(value)
         value = layers.Dense(16, 'swish')(value)
-        value = layers.Dense(1, 'linear')(value)
+        value = layers.Dense(1, 'sigmoid')(value)
+        value = layers.Lambda(lambda x: x * 2 - 1)(value)
 
         # Extract the policy
         policy = layers.Conv2D(18, 1, 1, 'same', activation='softmax')(x)

@@ -100,6 +100,11 @@ class AlphaTablutZero(Player):
             root, state_history, return_state_transformed=True)
 
         self._expand(root, p_0)
+
+        def count_depth(tree: Tree):
+            if tree.parent_action is None:
+                return 0
+            return count_depth(tree.parent_action[0]) + 1
         
         c = 0
         start_timer = datetime.datetime.now()
@@ -123,9 +128,7 @@ class AlphaTablutZero(Player):
                 p, v = self._evaluate_state(s, state_history)
                 self._expand(s, p)
                 self._backup(s, v)
-            else:
-                print(f"found terminal state. {s.parent_action[0].N[a_star]}")
-        print(f"node visited: {c}, depth reached: {tree_depth}")
+        print(f"node visited: {c}, depth reached: {tree_depth} ({count_depth(s)})")
         count_action_taken = [root.N[a] ** (1 / temperature)
                               for a in root.actions]
         denominator_policy = sum(count_action_taken)
@@ -137,6 +140,8 @@ class AlphaTablutZero(Player):
                 root.actions
             ])
         return policy
+    
+
 
     def _expand(self, state_tree: Tree, policy: list[float]):
         for a, pa in zip(state_tree.actions, policy):

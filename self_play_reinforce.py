@@ -83,13 +83,13 @@ def main():
     start_timer = datetime.datetime.now()
     def on_end_of_game():
         # 6 Hours
-        if (datetime.datetime.now() - start_timer).total_seconds() < 21600:
+        if (datetime.datetime.now() - start_timer).total_seconds() < 8800:
             global state_history
             state_history = []
             player1.cache = []
             player2.cache = []
-            gc.collect()
             board.restart(game.create_root(random.randint(0, 1)))
+            gc.collect()
             on_ready()
 
     board.event.on("loaded", on_ready)
