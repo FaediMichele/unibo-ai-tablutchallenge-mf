@@ -18,7 +18,7 @@ from .util import boolean_mask_from_coordinates, no_repetition_actions, actions_
 
 class Model:
     # TODO do a reg net instead
-    def __init__(self, path: str='reinforce_no_repetition_v2', model_path:str=None) -> None:
+    def __init__(self, path: str='reinforce_no_repetition', model_path:str=None) -> None:
         self.model: keras.Model = None
         self.optimizer: keras.optimizers.Optimizer = None
         self.path = path
@@ -293,79 +293,47 @@ class Model:
             pickle.dump(cache_data, f)
 
 
-
     def create_model(self) -> keras.Model:
-        # Made with ChatGPT with few corrections ;) - inspired by RegNetY
-        # Define the input layer
-
-        # board batches = history + current_state + state_player
         input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 2)
-        inputs = tf.keras.Input(shape=input_shape)
-
-        # Define the base width, slope, and expansion factor parameters for RegNetY-200MF
-        w_0 = 24
-        w_a = 24.48
-        w_m = 2.49
-        d = 13
-
-        # Compute the number of channels for each block group
-        def compute_channels(n_blocks, w_prev):
-            w = w_prev
-            channels = []
-            for i in range(n_blocks):
-                w_next = int(round(w * w_a / w_0 ** (w_m / d)))
-                channels.append(w_next)
-                w = w_next
-            return channels
-
-        # Compute the channels for each block group in RegNetY-200MF
-        channels = compute_channels(n_blocks=3, w_prev=w_0)
-
-        # First stage
-        x = layers.Conv2D(filters=channels[0], kernel_size=3,
-                          padding='same')(inputs)
-        x = layers.BatchNormalization()(x)
-        x = layers.ReLU()(x)
-
-        # Second stage
-        for i in range(1):
-
-            # Compute the channels for this block group
-            n_channels = channels[i]
-
-            # Residual path
-            identity = x
-
-            # BottleNeckBlock
-            x = layers.Conv2D(filters=n_channels, kernel_size=1, strides=1)(x)
-            x = layers.BatchNormalization()(x)
-            x = layers.ReLU()(x)
-            x = layers.Conv2D(filters=n_channels, kernel_size=3, strides=1,
-                              padding='same')(x)
-            x = layers.BatchNormalization()(x)
-            x = layers.ReLU()(x)
-            x = layers.Conv2D(filters=n_channels * 4, kernel_size=1,
-                              strides=1)(x)
-            x = layers.BatchNormalization()(x)
-
-            # Skip connection
-            if identity.shape[-1] != x.shape[-1]:
-                identity = layers.Conv2D(filters=n_channels * 4,
-                                         kernel_size=1, strides=1)(identity)
-                identity = layers.BatchNormalization()(identity)
-
-            x = layers.Add()([x, identity])
-            x = layers.ReLU()(x)
+        policy_shape = (9, 9, 18)
         
-        # Extract the value
-        value = layers.Conv2D(16, 3, 1, activation='swish')(x)
-        value = layers.Flatten()(value)
-        value = layers.Dense(16, 'swish')(value)
-        value = layers.Dense(1, 'linear')(value)
-
-        # Extract the policy
-        policy = layers.Conv2D(18, 1, 1, 'same', activation='linear')(x)
-        # Define the model
-        model = tf.keras.Model(inputs=inputs, outputs=[value, policy])
-
+        input_layer = keras.Input(shape=input_shape)
+        
+        policy_output = self.create_policy_network(input_shape, policy_shape)(input_layer)
+        state_value_output = self.create_value_network(input_shape)(input_layer)
+        model = tf.keras.Model(inputs=input_layer, outputs=[state_value_output, policy_output])
         return model
+        
+
+    def create_policy_network(self, input_shape, policy_shape):
+        # Made with ChatGPT with few corrections ;)
+        input_layer = keras.Input(shape=input_shape)
+        x = layers.Conv2D(64, (3, 3), activation='relu')(input_layer)
+        x = layers.MaxPooling2D((2, 2))(x)
+        x = layers.Conv2D(128, (3, 3), activation='relu')(x)
+        x = layers.MaxPooling2D((2, 2))(x)
+        x = layers.Conv2D(256, (3, 3), activation='relu')(x)
+        x = layers.Flatten()(x)
+        x = layers.Dense(512, activation='relu')(x)
+        
+        dense_shape = policy_shape[0] * policy_shape[1] * policy_shape[2]
+        x = layers.Dense(dense_shape, activation='linear')(x)
+        x = layers.Reshape(policy_shape)(x)
+        
+
+        return tf.keras.Model(inputs=input_layer, outputs=x)
+
+    def create_value_network(self, input_shape):
+        # Made with ChatGPT with few corrections ;)
+        input_layer = keras.Input(shape=input_shape)
+        x = layers.Conv2D(64, (3, 3), activation='relu')(input_layer)
+        x = layers.MaxPooling2D((2, 2))(x)
+        x = layers.Conv2D(128, (3, 3), activation='relu')(x)
+        x = layers.MaxPooling2D((2, 2))(x)
+        x = layers.Conv2D(256, (3, 3), activation='relu')(x)
+        x = layers.Flatten()(x)
+        x = layers.Dense(512, activation='relu')(x)
+        x = layers.Dense(1, activation='linear')(x)
+        
+
+        return tf.keras.Model(inputs=input_layer, outputs=x)

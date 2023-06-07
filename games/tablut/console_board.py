@@ -1,4 +1,4 @@
-from games.board import Board, zeros_matrix
+from games.board import Board
 from termcolor import colored, COLORS
 from copy import deepcopy
 
@@ -104,7 +104,8 @@ empty_colored_board =[
     ]
 ]
 
-
+def zeros_matrix(shape):
+    return [[0 for _ in range(shape[1])] for _ in range(shape[0])]
 
 class ConsoleBoard(Board):
     def __init__(self, initial_state=zeros_matrix((9,9))):

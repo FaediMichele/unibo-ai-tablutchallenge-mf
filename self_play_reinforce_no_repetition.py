@@ -7,9 +7,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
-from games.tablut_simple.players.reinforce_no_repetition import Reinforce, Model
-from games.tablut_simple.game import Game
-from games.tablut_simple.console_board import ConsoleBoard
+from games.tablut.players.reinforce_no_repetition import Reinforce, Model
+from games.tablut.game import Game
+from games.tablut.console_board import ConsoleBoard
 from games.board import Board
 from games.player import Player, Action
 from functools import partial

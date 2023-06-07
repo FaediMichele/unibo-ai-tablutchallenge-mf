@@ -45,7 +45,7 @@ class Reinforce(Player):
         '''
         state = self.board.state
         actions = tuple(self.game.actions(state))
-        policy, _, state_tensor = self._evaluate_state(state, actions, state_history, True)
+        policy, state_value, state_tensor = self._evaluate_state(state, actions, state_history, True)
         
         if self.training:
             # the if is true when the model assign 0 probability to all
@@ -61,7 +61,10 @@ class Reinforce(Player):
 
             self.cache.append([state_tensor, action_taken])
             self.make_move(action_taken)
-            
+            if state_value > 0:
+                print(f"{self.player} think that the state value is  {state_value:0.4}")
+            else:
+                print(f"{self.player} think that the state value is {state_value:0.4}")
         else:
             self.make_move(actions[argmax(range(len(policy)), key=lambda x: policy[x])])
 
