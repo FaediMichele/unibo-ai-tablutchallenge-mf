@@ -1,15 +1,3 @@
-import logging
-import warnings
-import os
-import absl.logging
-
-from games.tablut.console_board import ConsoleBoard
-absl.logging.set_verbosity(absl.logging.ERROR)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-warnings.filterwarnings("ignore")
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
-
-
 import tensorflow as tf
 import random
 import math
@@ -96,7 +84,7 @@ class AlphaTablutZero(Player):
                 evaluation.append(-1.0)
 
     def _mcts(self, root: Tree, state_history: list[State],
-              ms_for_search: int, temperature: float=1.0, training=False
+              ms_for_search: int, temperature: float=10, training=False
               ) ->list[float]:
         
         if root.actions is None:
@@ -107,13 +95,9 @@ class AlphaTablutZero(Player):
             root, state_history, return_state_transformed=True)
 
         self._expand(root, p_0)
-
-        def count_depth(tree: Tree):
-            if tree.parent_action is None:
-                return 0
-            return count_depth(tree.parent_action[0]) + 1
         
         c = 0
+        max_tree_dept = 0
         start_timer = datetime.datetime.now()
         while (datetime.datetime.now() - start_timer
                ).total_seconds() * 1000 < ms_for_search:
@@ -129,17 +113,21 @@ class AlphaTablutZero(Player):
                 s = child
                 tree_depth += 1
             c += 1
+            max_tree_dept = max(max_tree_dept, tree_depth)
 
             if s.actions is None:
                 s.actions = tuple(self.game.actions(s.state))
                 p, v, is_final = self._evaluate_state(s, state_history)
                 self._expand(s, p)
                 self._backup(s, v, is_final)
-        # print(f"node visited: {c}, depth reached: {tree_depth} ({count_depth(s)})")
+        
         count_action_taken = [root.N[a] ** (1 / temperature)
                               for a in root.actions]
         denominator_policy = sum(count_action_taken)
         policy = [(t ** (1 / temperature)) / denominator_policy for t in count_action_taken]
+        
+        print(f"node visited: {c}, depth reached: {max_tree_dept}")
+        
         if training:
             self.cache.append([
                 root_tensor,

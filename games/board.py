@@ -7,14 +7,10 @@ from functools import partial
 package_directory = os.path.dirname(os.path.abspath(__file__))
 
 
-def zeros_matrix(shape):
-    return [[0 for _ in range(shape[1])] for _ in range(shape[0])]
-
-
 class Board:
     ''' Class that represent the environment the player are playing.'''
 
-    def __init__(self, initial_state=zeros_matrix((9, 9))):
+    def __init__(self, initial_state):
         ''' Create the board with an initial state
 
         Keyword arguments:
@@ -27,6 +23,7 @@ class Board:
 
     def select_state(self, state):
         self.state = state
+        print(f"Remaining turn to the end: {-state[2]}            ", end="\r")
         
         
     def restart(self, new_board=None):

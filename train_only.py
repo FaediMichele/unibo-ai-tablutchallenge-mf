@@ -1,10 +1,19 @@
-from games.tablut.players.alphazero.alpha_tablut_zero import AlphaTablutZero, ModelUtil
+import logging
+import warnings
+import os
+import absl.logging
+absl.logging.set_verbosity(absl.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings("ignore")
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
+from games.tablut.players.reinforce_no_repetition import Model
 
 
 def main():
-    model = ModelUtil.load_model()
-    ModelUtil.train_model(model, epochs=20)
-    ModelUtil.save_model(model)
+    model = Model()
+    model.train_model(epochs=1, step_for_epoch=10000, batch_size=32)
+    model.save_model()
 
 
 if __name__ == '__main__':

@@ -8,9 +8,9 @@ warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 
-from games.tablut.players.alpha_reinforce import AlphaTablutReinforce, Model
-from games.tablut.game import Game
-from games.tablut.console_board import ConsoleBoard
+from games.tablut_simple.players.alpha_reinforce import AlphaTablutReinforce, Model
+from games.tablut_simple.game import Game
+from games.tablut_simple.console_board import ConsoleBoard
 from games.board import Board
 from games.player import Player, Action
 from functools import partial
@@ -23,7 +23,7 @@ state_history = []
 def player_manager(board: Board, game: Game, player1: Player, player2: Player,
                    action: Action):
     current_player = board.state[0]
-    if current_player == player1.player:
+    if current_player == player2.player:
         player_to_move, opponent = player1, player2
     else:
         player_to_move, opponent = player2, player1
@@ -32,13 +32,12 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
     board.select_state(new_state)
     state_history.append(new_state)
     if new_state[2] >= 0:
-        player_to_move.end(action, opponent.player)
-        opponent.end(action, player_to_move.player)
+        player_to_move.end(action, "D")
+        opponent.end(action, "D")
         print("Game too long")
-        # player_to_move.model.save_cache(player_to_move.cache + opponent.cache)
-        # player_to_move.model.player_wins('D')
-        # player_to_move.model.train_model()
-        # player_to_move.model.save_model()
+        player_to_move.model.player_wins('D')
+        player_to_move.model.train_model()
+        player_to_move.model.save_model()
         
     elif game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
         player_to_move.end(action, opponent.player)
@@ -57,10 +56,11 @@ def loaded(board: Board, game: Game, player1: Player, player2: Player):
     If the board is a GUI, this function is called on window loaded'''
     if type(board) == ConsoleBoard:
         board.print_board()
+    state_history.append(board.state)
     if board.state[0] == player1.player:
-        player1.next_action(None, [])
+        player1.next_action(None, state_history)
     else:
-        player2.next_action(None, [])
+        player2.next_action(None, state_history)
 
 
 def main():
@@ -77,15 +77,15 @@ def main():
     model = Model()
 
     player1 = AlphaTablutReinforce(make_move, board, game, 0, model,
-                              training=True, ms_for_search=5000)
+                              training=True, node_for_search=1000)
     player2 = AlphaTablutReinforce(make_move, board, game, 1, model,
-                              training=True, ms_for_search=5000)
+                              training=True, node_for_search=1000)
 
     on_ready = partial(loaded, board, game, player1, player2)
     start_timer = datetime.datetime.now()
     def on_end_of_game():
         # 6 Hours
-        if (datetime.datetime.now() - start_timer).total_seconds() < 21600:
+        if (datetime.datetime.now() - start_timer).total_seconds() < 8600:
             global state_history
             state_history = []
             player1.cache = []

@@ -1,34 +1,19 @@
-from games.board import Board, zeros_matrix
-from termcolor import colored, COLORS
+from games.board import Board
+from termcolor import colored
 from copy import deepcopy
 
 empty_colored_board =[
     [
         colored('■', 'cyan'),
         colored('■', 'cyan'),
-        colored('■', 'cyan'),
         colored('■', 'light_blue'),
         colored('■', 'light_blue'),
         colored('■', 'light_blue'),
-        colored('■', 'cyan'),
         colored('■', 'cyan'),
         colored('■', 'cyan'),
     ],
     [
         colored('■', 'cyan'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_blue'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'cyan'),
-    ],
-    [
-        colored('■', 'cyan'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
@@ -43,12 +28,9 @@ empty_colored_board =[
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
         colored('■', 'light_blue'),
     ],
     [
-        colored('■', 'light_blue'),
         colored('■', 'light_blue'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
@@ -56,12 +38,9 @@ empty_colored_board =[
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_blue'),
-        colored('■', 'light_blue'),
     ],
     [
         colored('■', 'light_blue'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
@@ -76,29 +55,14 @@ empty_colored_board =[
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
         colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'cyan'),
-    ],
-    [
-        colored('■', 'cyan'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_blue'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
-        colored('■', 'light_yellow'),
         colored('■', 'cyan'),
     ],
     [
         colored('■', 'cyan'),
         colored('■', 'cyan'),
-        colored('■', 'cyan'),
         colored('■', 'light_blue'),
         colored('■', 'light_blue'),
         colored('■', 'light_blue'),
-        colored('■', 'cyan'),
         colored('■', 'cyan'),
         colored('■', 'cyan'),
     ]
@@ -106,8 +70,11 @@ empty_colored_board =[
 
 
 
+def zeros_matrix(shape):
+    return [[0 for _ in range(shape[1])] for _ in range(shape[0])]
+
 class ConsoleBoard(Board):
-    def __init__(self, initial_state=zeros_matrix((9,9))):
+    def __init__(self, initial_state=zeros_matrix((7,7))):
         super().__init__(initial_state)
         self.white_player = initial_state[0]
 
@@ -122,14 +89,14 @@ class ConsoleBoard(Board):
                       2: colored('K', 'red')}
         print()
         print(f"Turn of player {('B' if self.state[0] == 1 else 'W')} - {self.state[0]}")
-        print("    0 1 2 3 4 5 6 7 8\n")
+        print("    0 1 2 3 4 5 6 \n")
         new_board = deepcopy(empty_colored_board)
-        for x in range(9):
-            for y in range(9):
+        for x in range(7):
+            for y in range(7):
                 if self.state[1][x][y] != 0:
                     new_board[x][y] = value_char[self.state[1][x][y]]
         
-        for y in range(9):
+        for y in range(7):
             print(chr(ord("a") + y) + "   " + " ".join([new_board[x][y]
-                                                         for x in range(9)]))
+                                                         for x in range(7)]))
             

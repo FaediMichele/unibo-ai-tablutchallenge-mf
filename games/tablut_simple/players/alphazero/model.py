@@ -12,7 +12,7 @@ from .util import policy_to_policy_matrix, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATI
 
 class Model:
     # TODO do a reg net instead
-    def __init__(self, path: str='alpha_zero') -> None:
+    def __init__(self, path: str='simple_alpha_zero') -> None:
         self.model: keras.Model = None
         self.optimizer: keras.optimizers.Optimizer = None
         self.path = path
@@ -80,6 +80,7 @@ class Model:
     def predict(self, data):
         data = tf.expand_dims(data, axis=0)
         value, policy = self.model.predict(data, verbose=0)
+        policy = tf.nn.softmax(policy)
         if tf.reduce_any(tf.math.is_nan(policy)):
             print(data, "\n", policy)
             raise ValueError('keras.model.predict returned value with NaN\n'
@@ -224,7 +225,7 @@ class Model:
         # Define the input layer
 
         # history + current_state + state_player
-        input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 2)
+        input_shape = (7, 7, PREVIOUS_STATE_TO_MODEL + 2)
         inputs = tf.keras.Input(shape=input_shape)
 
         # Define the base width, slope, and expansion factor parameters for RegNetY-200MF
@@ -289,31 +290,8 @@ class Model:
         value = layers.Lambda(lambda x: x * 2 - 1)(value)
 
         # Extract the policy
-        policy = layers.Conv2D(18, 1, 1, 'same', activation='softmax')(x)
+        policy = layers.Conv2D(14, 1, 1, 'same', activation='softmax')(x)
         # Define the model
         model = tf.keras.Model(inputs=inputs, outputs=[value, policy])
 
-        return model
-    
-
-
-    def create_model_old(self) -> tuple[keras.Model, keras.optimizers.Optimizer]:
-        # Old model - my implementation but not anymore supported
-        # 1 channel for the current player and 1 for the current state
-        input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 3)
-        input_layer = keras.Input(input_shape) 
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(input_layer)
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(x)
-        x = layers.Conv2D(81, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(x)
-        x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(
-            tf.reshape(x, (-1,9,9,9,9)))
-        x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(x_p)
-        
-        value = layers.Dense(1, 'linear')(layers.Flatten()(x))
-        policy = layers.Conv3D(9, 3, 1, 'same', activation='softmax')(x_p)
-        model = keras.Model(inputs=input_layer, outputs=[value, policy])
-        model.compile()
         return model
