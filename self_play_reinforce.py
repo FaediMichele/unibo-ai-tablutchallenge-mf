@@ -38,7 +38,6 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
         player_to_move.model.player_wins('D', new_state[2])
         player_to_move.model.save_model()
         
-        
     elif game.is_terminal(new_state) or len(game.actions(new_state)) == 0:
         winner = 'W' if new_state[0] == 1 else 'B'
         print(f"Game ended with a winner: {winner}. "
@@ -47,7 +46,6 @@ def player_manager(board: Board, game: Game, player1: Player, player2: Player,
         
         player_to_move.model.player_wins(winner, new_state[2])
         player_to_move.model.save_model()
-        
 
     else:
         player_to_move.next_action(action, state_history)
@@ -68,7 +66,7 @@ def loaded(board: Board, game: Game, player1: Player, player2: Player):
 def main():
     maximum_turn = 2000
     game = Game()
-    board = Board(initial_state=game.create_root(random.randint(0, 1),
+    board = ConsoleBoard(initial_state=game.create_root(random.randint(0, 1),
                                                         -maximum_turn))
     def make_move(action: Action):
         board.run_manager_function(lambda:
@@ -89,7 +87,7 @@ def main():
             state_history = []
             player1.cache = []
             player2.cache = []
-            board.restart(game.create_root(random.randint(0, 1)))
+            board.restart(game.create_root(random.randint(0, 1), board.initial_state[2]))
             gc.collect()
             on_ready()
 

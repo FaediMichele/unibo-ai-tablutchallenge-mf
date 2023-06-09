@@ -30,7 +30,7 @@ class Board:
         if new_board is None:
             self.state = self.initial_state
         else:
-            self.state = self.initial_state
+            self.state = new_board
         self.scheduler = []
 
     def run(self):

@@ -11,7 +11,7 @@ class Tree:
         assert parent_action is None or isinstance(parent_action[0], Tree)
         self.state = state
         self.player = player
-        self.N: dict[Action, int] = defaultdict(lambda: 0.1)
+        self.N: dict[Action, int] = defaultdict(lambda: 0)
         self.W: dict[Action, float] = defaultdict(lambda: 0.0)
         self.Q: dict[Action, float] = defaultdict(lambda: 0.0)
         self.P: dict[Action, float] = dict()
@@ -32,7 +32,7 @@ class Tree:
             parent.Q[action] = parent.W[action] / parent.N[action]
             parent.backup(-value if invert else value)
 
-    def upper_confidence_bound(self, action: Action, cput: float=1):
+    def upper_confidence_bound(self, action: Action, cput: float = 5.0):
         return cput * self.P[action] * \
             math.sqrt(sum([self.N[a] for a in self.actions])
                       ) / (1 + self.N[action])
@@ -55,28 +55,10 @@ class Tree:
                                (player * 2 - 1))
         return tf.concat([tensor_board, tensor_state_player], axis=2)
     
-    
-    ############################àà
-    def _transform(self, state: State, state_history: list[State]) -> tf.Tensor:
-        player, board, _ = state
-        boards = [sh[1] for sh in state_history[-PREVIOUS_STATE_TO_MODEL - 1:]]
-        while len(boards) <= PREVIOUS_STATE_TO_MODEL:
-            boards.insert(0, boards[0])
-        boards = list(reversed(boards))
-        board_shape = (len(board), len(board[0]), 1)
-        
-        tensor_board = tf.stack(boards, axis=2)
-        tensor_state_player = (tf.ones(board_shape, tensor_board.dtype) *
-                               (player * 2 - 1))
-        return tf.concat([tensor_board, tensor_state_player], axis=2)
-    ###############################à
-    
     def get_parents_state(self) -> list[State]:
         if self.parent_action is None:
             return [self.state]
-        ancestor_states = self.parent_action[0].get_parents_state()
-        ancestor_states.append(self.state)
-        return ancestor_states
+        return self.parent_action[0].get_parents_state() + [self.state]
     
     def get_non_completed_branch(self) -> list[Action]:
         non_complete_actions = [a for a in self.actions

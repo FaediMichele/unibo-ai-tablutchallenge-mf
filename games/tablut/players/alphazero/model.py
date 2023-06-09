@@ -7,12 +7,17 @@ import json
 import os
 import pickle
 import datetime
+from games.tablut.game import State, Action
+from more_itertools import ichunked
+from itertools import repeat
 
-from .util import policy_to_policy_matrix, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATIONS
+from .util import policy_to_policy_matrix, actions_to_indexes, BOARD_SIZE, SAVE_ITERATIONS
 
 class Model:
     # TODO do a reg net instead
-    def __init__(self, path: str='alpha_zero') -> None:
+    def __init__(self, path: str=None) -> None:
+        if path is None:
+            path = f'{"" if BOARD_SIZE == 9 else "simple_"}alpha_zero'
         self.model: keras.Model = None
         self.optimizer: keras.optimizers.Optimizer = None
         self.path = path
@@ -26,7 +31,7 @@ class Model:
         if current_model_path is not None:
             model = keras.models.load_model(current_model_path, compile=False)
         else:
-            model = self.create_model()
+            raise Exception("Alpha Zero must be pre-trained. The neural network must be created somewhere else")
         self.model = model
 
     
@@ -38,17 +43,16 @@ class Model:
             self.model.save(os.path.join(self.path,
                                          f'old_model_{len(config["wins"])}'),
                                          save_format='tf')
-            
         if 'last_update' not in config or self.first_game is not None:
             last_update = self.first_game
             self.first_game = None
+            
         else: 
             last_update = datetime.datetime.strptime(config['last_update'],
                                                     "%Y-%m-%d %H:%M:%S")
         config['total_seconds'] += (datetime.datetime.now() - last_update
                                     ).total_seconds()
         config['last_update'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
         self.save_config_file(config)
 
     def load_config_file(self) -> dict:
@@ -84,16 +88,16 @@ class Model:
             print(data, "\n", policy)
             raise ValueError('keras.model.predict returned value with NaN\n'
                              f"Input data: {data}\nPrediction: {value, policy}")
-        return value[0][0], policy[0]
-
+        return value[0][0], tf.nn.softmax(policy[0])
+    
+    
     @tf.function
-    def loss_fn(self, pi, z, v, p):
-        
-        pi = tf.reshape(pi, (pi.shape[0],-1))
-        p = tf.reshape(p, (p.shape[0],-1))
-        mse = tf.reduce_mean(keras.losses.mean_squared_error(z, v))
-        cross_entropy = tf.reduce_mean(keras.losses.categorical_crossentropy(pi, p))
+    def loss_zero(self, pi, z, v_pred, p_pred):        
+        mse = tf.reduce_mean(keras.losses.mean_squared_error(z, v_pred))
+        p_pred_prob = tf.nn.softmax(p_pred)
+        cross_entropy = tf.reduce_mean(keras.losses.categorical_crossentropy(pi, p_pred_prob))
         penalty = sum(self.model.losses)
+
         return mse + cross_entropy + penalty
     
     def train_model(self,
@@ -104,24 +108,71 @@ class Model:
         last_samples = self.get_last_samples(batch_size * step_for_epoch)
         
         for e in range(epochs):
-            states_tensor, policies_tensor, zs_tensor  = self.sample(
-            last_samples, 0.25)
+            (states_tensor, policies_tensor,
+             action_taken_tensor, zs_tensor)  = self.sample(last_samples, 0.25)
             for batch_start in tqdm(range(0, policies_tensor.shape[0],
                                           batch_size)):
                 batch_state = states_tensor[batch_start:batch_start +\
                                                    batch_size]
                 batch_policy = policies_tensor[batch_start:batch_start + batch_size]
                 batch_z = zs_tensor[batch_start:batch_start + batch_size]
-
+                batch_action_taken = action_taken_tensor[batch_start:batch_start + batch_size]
+                
                 with tf.GradientTape() as tape:
                     v_pred, p_pred = self.model(batch_state, training=True)
-                    loss = self.loss_fn(batch_policy, batch_z, v_pred, p_pred)
+                    loss += self.loss_zero(batch_policy,
+                                          batch_z,
+                                          v_pred,
+                                          p_pred)
+                    
                 grads = tape.gradient(loss, self.model.trainable_weights)
                 self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
             
             print(f"Done epoch {e+1}/{epochs}")
 
-    def get_last_samples(self, number_of_samples: int=100_000) -> tuple[list[tf.Tensor], list[tf.Tensor], list[tf.Tensor]]:
+
+    def train_episode(self, states: list[tuple[tf.Tensor,
+                                               list[float],
+                                               list[Action],
+                                               Action]],
+                            batch_size: int=32):
+
+        with tqdm(total=len(states) // batch_size,
+                  desc="First episode") as pbar:
+            
+            for batch in ichunked(states, batch_size):
+                states_batch, _, _, actions_batch, z_batch = zip(*batch)
+                p_loss, v_loss = self.train_batch(
+                    states_batch,
+                    actions_batch,
+                    z_batch)
+                pbar.set_description(f"Value Loss: {v_loss:.5e}, "
+                                     f"Policy loss: {p_loss:.5e}")
+                pbar.update()
+
+    def train_batch(self,
+                    states: list[tf.Tensor],
+                    actions: list[Action],
+                    z: list[float]):
+        states_batch = tf.stack(states)
+        z_batch = tf.constant(z, shape=(len(z), 1), dtype=tf.float32)
+        actions_tensor = tf.constant(actions_to_indexes(actions))
+        with tf.GradientTape() as tape:
+            v_pred, p_pred = self.model(states_batch, training=True)
+            loss, policy_loss, state_value_loss = self.loss_zero(z_batch,
+                                                                 v_pred,
+                                                                 p_pred,
+                                                                 actions_tensor)
+        
+        grads = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+        return policy_loss, state_value_loss
+
+
+    def get_last_samples(self, number_of_samples: int=100_000
+                         ) -> tuple[list[tf.Tensor],
+                                    list[tf.Tensor],
+                                    list[tf.Tensor]]:
         file_indexes = []
         for filename in os.listdir(self.path):
             if filename.startswith("cache_") and filename.endswith(".pickle"):
@@ -135,35 +186,41 @@ class Model:
             'state': [],
             'policy': [],
             'actions': [],
-            'z': []
+            'actions_taken': [],
+            'z': [],
         }
         for filename, _ in sorted(file_indexes, key=lambda x: x[1],
                                   reverse=True):
             with open(os.path.join(self.path, filename), "rb") as f:
                 file_data = pickle.load(f)
 
-            file_state, file_policy, file_actions, file_z = zip(*file_data)
+            file_state, file_policy, file_actions, file_actions_taken, file_z = zip(*file_data)
             data_loaded['state'].extend(file_state)
             data_loaded['policy'].extend(file_policy)
             data_loaded['actions'].extend(file_actions)
+            data_loaded['actions_taken'].extend(file_actions_taken)
             data_loaded['z'].extend(file_z)
             if len(data_loaded['z']) >= number_of_samples:
                 
                 data_loaded['state'] = data_loaded['state'][:number_of_samples]
                 data_loaded['policy'] = data_loaded['policy'][:number_of_samples]
                 data_loaded['actions'] = data_loaded['actions'][:number_of_samples]
+                data_loaded['actions_taken'] = data_loaded['actions_taken'][:number_of_samples]
                 data_loaded['z'] = data_loaded['z'][:number_of_samples]
                 break
-
+                         
         state_matrix = tf.stack(data_loaded['state'], axis=0)
         policy_matrix = tf.stack([policy_to_policy_matrix(p, a)
                          for p, a in zip(data_loaded['policy'],
                                          data_loaded['actions'])], axis=0)
+        
+        action_takens_matrix = tf.stack(actions_to_indexes(data_loaded['actions_taken']), axis=0)
         z_matrix = tf.constant(data_loaded['z'], shape=(len(data_loaded['z']), 1))
-        return state_matrix, policy_matrix, z_matrix
+        policy_matrix = tf.reshape(policy_matrix, (-1, BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2))
+        return state_matrix, policy_matrix, action_takens_matrix, z_matrix
 
     def sample(self, samples: tuple, final_size: float) -> tuple:
-        states, policies, zs = samples
+        states, policies, action_takens, zs = samples
         num_element = int(states.shape[0] * final_size)
         sum_prob = states.shape[0] * (states.shape[0] + 1) / 2
         choiches = np.random.choice(range(0, states.shape[0]), num_element,
@@ -171,6 +228,7 @@ class Model:
         mask = [i in choiches for i in range(0, states.shape[0])]
         return (tf.boolean_mask(states, mask),
                 tf.boolean_mask(policies, mask),
+                tf.boolean_mask(action_takens, mask),
                 tf.boolean_mask(zs, mask))
     
     def get_last_model_path(self) -> str | None:
@@ -218,102 +276,3 @@ class Model:
         cache_data.extend(cache)
         with open(cache_filename, "wb") as f:
             pickle.dump(cache_data, f)
-
-    def create_model(self) -> keras.Model:
-        # Made with ChatGPT with few corrections ;) - inspired by RegNetY
-        # Define the input layer
-
-        # history + current_state + state_player
-        input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 2)
-        inputs = tf.keras.Input(shape=input_shape)
-
-        # Define the base width, slope, and expansion factor parameters for RegNetY-200MF
-        w_0 = 24
-        w_a = 24.48
-        w_m = 2.49
-        d = 13
-
-        # Compute the number of channels for each block group
-        def compute_channels(n_blocks, w_prev):
-            w = w_prev
-            channels = []
-            for i in range(n_blocks):
-                w_next = int(round(w * w_a / w_0 ** (w_m / d)))
-                channels.append(w_next)
-                w = w_next
-            return channels
-
-        # Compute the channels for each block group in RegNetY-200MF
-        channels = compute_channels(n_blocks=3, w_prev=w_0)
-
-        # First stage
-        x = layers.Conv2D(filters=channels[0], kernel_size=3,
-                          padding='same')(inputs)
-        x = layers.BatchNormalization()(x)
-        x = layers.ReLU()(x)
-
-        # Second stage
-        for i in range(1):
-
-            # Compute the channels for this block group
-            n_channels = channels[i]
-
-            # Residual path
-            identity = x
-
-            # BottleNeckBlock
-            x = layers.Conv2D(filters=n_channels, kernel_size=1, strides=1)(x)
-            x = layers.BatchNormalization()(x)
-            x = layers.ReLU()(x)
-            x = layers.Conv2D(filters=n_channels, kernel_size=3, strides=1,
-                              padding='same')(x)
-            x = layers.BatchNormalization()(x)
-            x = layers.ReLU()(x)
-            x = layers.Conv2D(filters=n_channels * 4, kernel_size=1, strides=1)(x)
-            x = layers.BatchNormalization()(x)
-
-            # Skip connection
-            if identity.shape[-1] != x.shape[-1]:
-                identity = layers.Conv2D(filters=n_channels * 4,
-                                         kernel_size=1, strides=1)(identity)
-                identity = layers.BatchNormalization()(identity)
-
-            x = layers.Add()([x, identity])
-            x = layers.ReLU()(x)
-        
-        # Extract the value
-        value = layers.Conv2D(16, 3, 1, activation='swish')(x)
-        value = layers.Flatten()(value)
-        value = layers.Dense(16, 'swish')(value)
-        value = layers.Dense(1, 'sigmoid')(value)
-        value = layers.Lambda(lambda x: x * 2 - 1)(value)
-
-        # Extract the policy
-        policy = layers.Conv2D(18, 1, 1, 'same', activation='softmax')(x)
-        # Define the model
-        model = tf.keras.Model(inputs=inputs, outputs=[value, policy])
-
-        return model
-    
-
-
-    def create_model_old(self) -> tuple[keras.Model, keras.optimizers.Optimizer]:
-        # Old model - my implementation but not anymore supported
-        # 1 channel for the current player and 1 for the current state
-        input_shape = (9, 9, PREVIOUS_STATE_TO_MODEL + 3)
-        input_layer = keras.Input(input_shape) 
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(input_layer)
-        x = layers.Conv2D(64, 3, 1, 'same', activation='swish')(x)
-        x = layers.Conv2D(81, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(x)
-        x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(
-            tf.reshape(x, (-1,9,9,9,9)))
-        x_p = layers.Conv3D(9, 3, 1, 'same', activation='swish',
-                          kernel_regularizer=keras.regularizers.l2(0.01))(x_p)
-        
-        value = layers.Dense(1, 'linear')(layers.Flatten()(x))
-        policy = layers.Conv3D(9, 3, 1, 'same', activation='softmax')(x_p)
-        model = keras.Model(inputs=input_layer, outputs=[value, policy])
-        model.compile()
-        return model

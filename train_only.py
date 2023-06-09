@@ -7,12 +7,12 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
-from games.tablut.players.reinforce_no_repetition import Model
+from games.tablut_simple.players.reinforce_no_repetition import Model
 
 
 def main():
     model = Model()
-    model.train_model(epochs=1, step_for_epoch=10000, batch_size=32)
+    model.train_model(epochs=1, step_for_epoch=1000, batch_size=32)
     model.save_model()
 
 

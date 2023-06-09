@@ -26,6 +26,7 @@ state_history = []
 
 def player_manager(board: Board, game: Game, player1: Player, player2: Player,
                    action: Action):
+    print(f"Number of possible actions: {len(game.actions(board.state))}")
     current_player = board.state[0]
     if current_player == player2.player:
         player_to_move, opponent = player1, player2
@@ -57,6 +58,7 @@ def loaded(board: Board, game: Game, player1: Player, player2: Player):
     If the board is a GUI, this function is called on window loaded'''
     if type(board) == ConsoleBoard:
         board.print_board()
+    
     state_history.append(board.state)
     if board.state[0] == player1.player:
         player1.next_action(None, state_history)

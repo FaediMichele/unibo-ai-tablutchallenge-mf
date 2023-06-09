@@ -5,7 +5,7 @@ import tensorflow as tf
 
 SAVE_ITERATIONS = [1, 10, 25, 50, 100, 300, 500, 1000, 2000, 5000, 10000]
 PREVIOUS_STATE_TO_MODEL = 7
-
+BOARD_SIZE = 7
 
 def state_hashable(state: State) -> tuple:
     player, board, turn = state
@@ -34,7 +34,7 @@ def policy_matrix_to_policy(matrix, actions: list[Action]) -> list[float]:
         if a[0] == a[2]:
             p.append(matrix[a[0], a[1], a[3]])
         else:
-            p.append(matrix[a[0], a[1], a[2] + 7])
+            p.append(matrix[a[0], a[1], a[2] + BOARD_SIZE])
     return p
 
 def policy_to_policy_matrix(policy: list[float], actions: list[Action]
@@ -43,9 +43,21 @@ def policy_to_policy_matrix(policy: list[float], actions: list[Action]
     matrix = tf.constant([
         [
             [
-                [action_to_policy[(x1, y1, x1, k)] for k in range(7)] +
-                [action_to_policy[(x1, y1, k, y1)] for k in range(7)]
-            ] for y1 in range(7)
-        ] for x1 in range(7)
+                [action_to_policy[(x1, y1, x1, k)] for k in range(BOARD_SIZE)] +
+                [action_to_policy[(x1, y1, k, y1)] for k in range(BOARD_SIZE)]
+            ] for y1 in range(BOARD_SIZE)
+        ] for x1 in range(BOARD_SIZE)
     ])
     return matrix
+
+def actions_to_indexes(actions: list[Action]) -> list[tuple[int, int, int]]:
+    res = []
+    for a in actions:
+        if a[0] == a[2]:
+            res.append((a[0], a[1], a[3]))
+        else:
+            res.append((a[0], a[1], a[2] + BOARD_SIZE))
+    return res
+    
+
+
