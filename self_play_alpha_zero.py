@@ -8,7 +8,7 @@ warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 
-from games.tablut_simple.players.alphazero import AlphaTablutZero, Model
+from games.tablut_simple.players.alpha_zero import AlphaTablutZero, Model
 from games.tablut_simple.game import Game
 from games.tablut_simple.console_board import ConsoleBoard
 from games.board import Board

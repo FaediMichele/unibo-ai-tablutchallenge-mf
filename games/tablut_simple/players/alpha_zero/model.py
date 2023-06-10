@@ -19,7 +19,7 @@ class Model:
     # TODO do a reg net instead
     def __init__(self, path: str=None, remote=False, server_url="http://0.0.0.0:6000") -> None:
         if path is None:
-            path = f'{"" if BOARD_SIZE == 9 else "simple_"}alpha_zero'
+            path = f'models/{"" if BOARD_SIZE == 9 else "simple_"}alpha_zero'
         self.model: keras.Model = None
         self.optimizer: keras.optimizers.Optimizer = None
         self.path = path

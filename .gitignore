@@ -1,9 +1,4 @@
-alpha_zero
-alpha_reinforce
-reinforce
-simple_alpha_zero
-simple_alpha_reinforce
-simple_reinforce
+models/*
 
 .DS_STORE
 

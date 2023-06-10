@@ -7,7 +7,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
-from games.tablut_simple.players.alphazero import Model
+from games.tablut_simple.players.alpha_zero import Model
 
 
 def main():

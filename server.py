@@ -11,10 +11,10 @@ import pickle
 import datetime
 
 from games.tablut.players.reinforce import Model as RNModel
-from games.tablut.players.alphazero import Model as AZNModel
+from games.tablut.players.alpha_zero import Model as AZNModel
 from games.tablut.players.alpha_reinforce import Model as ARNModel
 from games.tablut_simple.players.reinforce import Model as RSModel
-from games.tablut_simple.players.alphazero import Model as AZSModel
+from games.tablut_simple.players.alpha_zero import Model as AZSModel
 from games.tablut_simple.players.alpha_reinforce import Model as ARSModel
 
 app = FastAPI()
@@ -50,13 +50,13 @@ train_episode_data = {}
 config_file_semaphore = asyncio.Semaphore(1)
 
 models_paths = {
-    'simple_reinforce': ("simple_reinforce", RSModel),
-    'simple_alpha_zero': ("simple_alpha_zero", AZSModel),
-    'simple_alpha_reinforce': ("simple_alpha_reinforce", ARSModel),
+    'simple_reinforce': ("models/simple_reinforce", RSModel),
+    'simple_alpha_zero': ("models/simple_alpha_zero", AZSModel),
+    'simple_alpha_reinforce': ("models/simple_alpha_reinforce", ARSModel),
 
-    'reinforce': ("reinforce", RNModel),
-    'alpha_zero': ("alpha_zero", AZNModel),
-    'alpha_reinforce': ("alpha_reinforce", ARNModel),
+    'reinforce': ("models/reinforce", RNModel),
+    'alpha_zero': ("models/alpha_zero", AZNModel),
+    'alpha_reinforce': ("models/alpha_reinforce", ARNModel),
 }
 
 

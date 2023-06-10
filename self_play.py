@@ -8,12 +8,12 @@ warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 from games.tablut_simple.players.reinforce import Reinforce as SReinforce, Model as SRModel
-from games.tablut_simple.players.alphazero import AlphaTablutZero as SAlphaTablutZero, Model as SZModel
+from games.tablut_simple.players.alpha_zero import AlphaTablutZero as SAlphaTablutZero, Model as SZModel
 from games.tablut_simple.players.alpha_reinforce import AlphaTablutReinforce as SAlphaTablutReinforce, Model as SARModel
 from games.tablut_simple.game import Game as SimpleGame
 from games.tablut_simple.console_board import ConsoleBoard as SimpleConsoleBoard
 from games.tablut.players.reinforce import Reinforce as NReinforce, Model as NRModel
-from games.tablut.players.alphazero import AlphaTablutZero as NAlphaTablutZero, Model as NZModel
+from games.tablut.players.alpha_zero import AlphaTablutZero as NAlphaTablutZero, Model as NZModel
 from games.tablut.players.alpha_reinforce import AlphaTablutReinforce as NAlphaTablutReinforce, Model as NARModel
 from games.tablut.game import Game as NormalGame
 from games.tablut.console_board import ConsoleBoard as NormalConsoleBoard

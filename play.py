@@ -9,7 +9,7 @@ logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 from games.tablut_simple.players.reinforce import Reinforce as R, Model as ModelR
 from games.tablut_simple.players.reinforce_no_repetition import Reinforce as RN, Model as ModelRN
-from games.tablut_simple.players.alphazero import AlphaTablutZero, Model as ModelZ
+from games.tablut_simple.players.alpha_zero import AlphaTablutZero, Model as ModelZ
 from games.tablut_simple.players.alpha_reinforce import AlphaTablutReinforce, Model as ModelZR
 from games.tablut_simple.players.console import Console
 from games.tablut_simple.game import Game
