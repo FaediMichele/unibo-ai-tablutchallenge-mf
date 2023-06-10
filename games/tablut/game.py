@@ -30,23 +30,11 @@ class Game():
                      [0,  0,  0,  0, black,  0,  0,  0,  0],
                      [0,  0,  0, black, black, black,  0,  0,  0]]
 
-    __distance_from_excapes = [[0, 0, 0, 1, 2, 1, 0, 0, 0],
-                               [0, 1, 1, 2, 3, 2, 1, 1, 0],
-                               [0, 1, 2, 3, 4, 3, 2, 1, 0],
-                               [1, 2, 3, 4, 5, 4, 3, 2, 1],
-                               [2, 3, 4, 5, 6, 5, 4, 3, 2],
-                               [1, 2, 3, 4, 5, 4, 3, 2, 1],
-                               [0, 1, 2, 3, 4, 3, 2, 1, 0],
-                               [0, 1, 1, 2, 3, 2, 1, 1, 0],
-                               [0, 0, 0, 1, 2, 1, 0, 0, 0]]
-
     camp_list = [(0, 3), (0, 4), (0, 5), (1, 4), (8, 3), (8, 4), (8, 5),
                  (7, 4), (3, 0), (4, 0), (5, 0), (4, 1), (3, 8), (4, 8), (5, 8), (4, 7)]
     escape_list = [(0, 1), (0, 2), (0, 6), (0, 7), (8, 1), (8, 2), (8, 6),
                    (8, 7), (1, 0), (2, 0), (6, 0), (7, 0), (1, 8), (2, 8), (6, 8), (7, 8)]
     __player_pieces_values = {"black": [black], "white": [white, king]}
-    __weight_heuristic = {1: {"king": 10, "soldier": 1, "king_position": 30},
-                          0: {"king": 5, "soldier": 10, "king_position": 20}}
     weight_king = 5
 
     def create_root(self, player: int, max_game_length=-1_000_000) -> Board:
@@ -164,25 +152,6 @@ class Game():
 
         return ((state[0]+1) % 2, board, state[2] + 1)
 
-    def h(self, state: State, player: int, min_max: bool) -> float:
-        num_white = len(self.where(state[1], [self.white]))
-        num_black = len(self.where(state[1], [self.black]))
-        king_pos = self.where(state[1], [self.king])[0]
-        enemy_adjacent_king = sum([1 if state[1][around_king[0]][around_king[1]] == self.black else 0 for around_king in [(
-            king_pos[0]-1, king_pos[1]), (king_pos[0]+1, king_pos[1]), (king_pos[0], king_pos[1]-1), (king_pos[0], king_pos[1]+1)]])
-        player_index = -2*player+1  # 1 if player == 0 else -1
-        min_max_player = 1 if (player == 0 and not min_max) or (
-            player == 1 and min_max) else 0
-
-        soldier_value = (num_white - num_black)
-        king_value = (enemy_adjacent_king if king_pos == (4, 4) else enemy_adjacent_king *
-                      4 if king_pos not in [(3, 4), (4, 3), (5, 4), (4, 5)] else enemy_adjacent_king*2)
-        king_pos_value = self.__distance_from_excapes[king_pos[0]][king_pos[1]]
-
-        return player_index * (self.__weight_heuristic[min_max_player]["soldier"] * soldier_value
-                               - self.__weight_heuristic[min_max_player]["king"] * king_value -
-                               self.__weight_heuristic[min_max_player]["king_position"] * king_pos_value)
-
     def is_terminal(self, state: State) -> bool:
         if state[2] >= 0:
             return True
@@ -192,15 +161,7 @@ class Game():
         king_pos = tuple(king_pos[0])
         return True if min(*king_pos) == 0 or max(*king_pos) == 8 else False
 
-    def utility(self, state: State, player: int) -> float:
-        king_pos = self.where(state[1], [self.king])
-        if len(king_pos) == 0:
-            v = infinity if player == 1 else -infinity
-        else:
-            v = -infinity if player == 1 else infinity
-        print(
-            f"Final State reached: player: {player}, value: {v}, (king_pos: {king_pos})")
-        return v
+    
 
     def get_player_pieces_values(self, player: str) -> list[int]:
         ''' Get the type(numerical) of the pieces for a player

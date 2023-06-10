@@ -11,7 +11,7 @@ class Tree:
         assert parent_action is None or isinstance(parent_action[0], Tree)
         self.state = state
         self.player = player
-        self.N: dict[Action, int] = defaultdict(lambda: 0)
+        self.N: dict[Action, int] = defaultdict(lambda: 0.1)
         self.W: dict[Action, float] = defaultdict(lambda: 0.0)
         self.Q: dict[Action, float] = defaultdict(lambda: 0.0)
         self.P: dict[Action, float] = dict()

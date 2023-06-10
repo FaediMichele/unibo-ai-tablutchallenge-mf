@@ -73,7 +73,7 @@ def main():
                                    player_manager(board, game,
                                                   player1, player2,
                                                   action))
-    model = Model()
+    model = Model(remote=True)
     player1 = Reinforce(make_move, board, game, 0, model=model, training=True)
     player2 = Reinforce(make_move, board, game, 1, model=model, training=True)
 

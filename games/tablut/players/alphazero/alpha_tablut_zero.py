@@ -1,14 +1,3 @@
-import logging
-import warnings
-import os
-import absl.logging
-
-from games.tablut.console_board import ConsoleBoard
-absl.logging.set_verbosity(absl.logging.ERROR)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-warnings.filterwarnings("ignore")
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
-
 
 import tensorflow as tf
 import random
@@ -36,7 +25,8 @@ class AlphaTablutZero(Player):
                  player: int,
                  model: Model,
                  training: bool=False,
-                 ms_for_search: int=5000):
+                 ms_for_search: int=5000,
+                 node_for_search: int=None):
         """Create a new player tha play randomly
 
         Keyword arguments:
@@ -50,8 +40,9 @@ class AlphaTablutZero(Player):
         self.game = game
         self.player = player
         self.ms_for_search = ms_for_search
-        self.cache = []
-        self.tree = None
+        self.node_for_search = node_for_search
+        self.cache: list[tuple[tf.Tensor, list[float], list[Action], Action]] = []
+        self.tree: Tree = None
         self.training = training
         self.model = model
         super(Player, self).__init__()
@@ -75,28 +66,45 @@ class AlphaTablutZero(Player):
         policy = self._mcts(self.tree, state_history, self.ms_for_search,
                             training=self.training)
         if self.training:
-            self.make_move(random.choices(self.tree.actions,
-                                          policy)[0])
+            # the if is true when the model assign 0 probability to all
+            # possible moves
+            if sum(policy) < 0.001:
+                action_taken = random.choice(self.tree.actions)[0]
+            else:
+                action_taken = random.choices(self.tree.actions, policy)[0]
+            self.cache[-1].append(action_taken)
+            self.make_move(action_taken)
         else:
-            self.make_move(self.tree.actions[argmax(range(len(policy)), key=lambda x: policy[x])])
+            self.make_move(self.tree.actions[argmax(range(len(policy)),
+                                                    key=lambda x: policy[x])])
 
-    def end(self, last_action: Action, winning: str):
+    def end(self, last_action: Action, opponent: Player, winner: str):
         """Called when a player wins.
 
         last_action -- the winning move
         winning -- the winning player
         """
-        logging.info(f'Calling win on {Player}, winning: {winning}')
-        for evaluation in self.cache:
-            if winning == "D":
-                evaluation.append(0)
-            elif winning == self.player:
-                evaluation.append(1.0)
+        logging.info(f'Calling win on {Player}, winning: {winner}')
+        if self.training:
+            if winner == 'draw':
+                g = 0
+            elif winner == self.player: # actually never happen
+                g = 1.0
             else:
-                evaluation.append(-1.0)
+                g = -1.0
+            
+            for step in self.cache:
+                step.append(g)
+            for step in opponent.cache:
+                step.append(-g)
+            
+            self.model.save_cache(self.cache)
+            opponent.model.save_cache(opponent.cache)
+            
+            self.model.train_episode(self.cache + opponent.cache)
 
     def _mcts(self, root: Tree, state_history: list[State],
-              ms_for_search: int, temperature: float=1.0, training=False
+              temperature: float=1.0, training=False
               ) ->list[float]:
         
         if root.actions is None:
@@ -108,15 +116,16 @@ class AlphaTablutZero(Player):
 
         self._expand(root, p_0)
 
-        def count_depth(tree: Tree):
-            if tree.parent_action is None:
-                return 0
-            return count_depth(tree.parent_action[0]) + 1
-        
         c = 0
-        start_timer = datetime.datetime.now()
-        while (datetime.datetime.now() - start_timer
-               ).total_seconds() * 1000 < ms_for_search:
+        if self.node_for_search is not None:
+            stop_condition = lambda: c < self.node_for_search
+        else:
+            start_timer = datetime.datetime.now()
+            stop_condition = lambda: (datetime.datetime.now() - start_timer
+                                      ).total_seconds() * 1000 < self.ms_for_search
+       
+        
+        while stop_condition():
             s = root
             tree_depth = 0
             # reached a leaf or a terminal state
@@ -135,7 +144,8 @@ class AlphaTablutZero(Player):
                 p, v, is_final = self._evaluate_state(s, state_history)
                 self._expand(s, p)
                 self._backup(s, v, is_final)
-        # print(f"node visited: {c}, depth reached: {tree_depth} ({count_depth(s)})")
+            else:
+                print(f"found terminal state. {s.parent_action[0].N[a_star]}")
         count_action_taken = [root.N[a] ** (1 / temperature)
                               for a in root.actions]
         denominator_policy = sum(count_action_taken)
@@ -147,8 +157,6 @@ class AlphaTablutZero(Player):
                 root.actions
             ])
         return policy
-    
-
 
     def _expand(self, state_tree: Tree, policy: list[float]):
         for a, pa in zip(state_tree.actions, policy):

@@ -19,13 +19,13 @@ class Game():
     black = -1
     white = 1
     king = 2
-    __empty_board = [[0, 0, black, black, black, 0, 0],
+    __empty_board = [[0, 0, black, 0, black, 0, 0],
                      [0, 0, 0,  white, 0, 0, 0],
                      [black, 0, 0, white, 0, 0, black],
                      [0, white, white, king,white, white, 0],
                      [black, 0, 0, white, 0, 0, black],
                      [0, 0, 0, white, 0, 0, 0],
-                     [0, 0, black, black, black, 0, 0]]
+                     [0, 0, black, 0, black, 0, 0]]
 
     __distance_from_excapes = [[0, 0, 1, 2, 1, 0, 0],
                                [0, 2, 3, 4, 3, 2, 0],
@@ -193,8 +193,6 @@ class Game():
             v = infinity if player == 1 else -infinity
         else:
             v = -infinity if player == 1 else infinity
-        print(
-            f"Final State reached: player: {player}, value: {v}, (king_pos: {king_pos})")
         return v
 
     def get_player_pieces_values(self, player: str) -> list[int]:

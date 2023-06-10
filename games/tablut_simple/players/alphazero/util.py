@@ -3,7 +3,7 @@ from typing import Callable, Any
 from collections import defaultdict
 import tensorflow as tf
 
-SAVE_ITERATIONS = [1, 10, 25, 50, 100, 300, 500, 1000, 2000, 5000, 10000]
+SAVE_ITERATIONS = [1, 10, 25, 50, 100, 300, 500, 1000, 2000, 5000, 10000, 15000, 20000, 35000, 50000, 75000, 100000]
 PREVIOUS_STATE_TO_MODEL = 7
 BOARD_SIZE = 7
 

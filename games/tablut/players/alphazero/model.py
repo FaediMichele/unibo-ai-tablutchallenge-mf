@@ -1,3 +1,5 @@
+import random
+import time
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
@@ -8,23 +10,28 @@ import os
 import pickle
 import datetime
 from games.tablut.game import State, Action
-from more_itertools import ichunked
-from itertools import repeat
+import requests
+import fcntl
 
-from .util import policy_to_policy_matrix, actions_to_indexes, BOARD_SIZE, SAVE_ITERATIONS
+from .util import policy_to_policy_matrix, actions_to_indexes, SAVE_ITERATIONS, BOARD_SIZE
 
 class Model:
     # TODO do a reg net instead
-    def __init__(self, path: str=None) -> None:
+    def __init__(self, path: str=None, remote=False, server_url="http://0.0.0.0:6000") -> None:
         if path is None:
             path = f'{"" if BOARD_SIZE == 9 else "simple_"}alpha_zero'
         self.model: keras.Model = None
         self.optimizer: keras.optimizers.Optimizer = None
         self.path = path
+        self.remote = remote
+        self.server_url = server_url
         self.first_game = datetime.datetime.now()
-        self.load_model()
+        if not remote:
+            self.load_model()
 
     def load_model(self):
+        if self.remote:
+            return
         if self.optimizer is None:
             self.optimizer = keras.optimizers.Adam()
         current_model_path = self.get_last_model_path()
@@ -36,6 +43,10 @@ class Model:
 
     
     def save_model(self):
+        # on remote the model file is managed by the server
+        if self.remote:
+            return
+        
         config = self.load_config_file()
         current_model_path = os.path.join(self.path, config['current'])
         self.model.save(current_model_path, save_format='tf')
@@ -57,38 +68,62 @@ class Model:
 
     def load_config_file(self) -> dict:
         config_path = os.path.join(self.path, 'config.json')
+        
         if os.path.isfile(config_path):
-            with open(config_path, 'r') as f:
-                return json.load(f)
+            return self.sync_file_op(config_path, 'r', lambda f: json.load(f))
         else:
             config = {
                     'current': 'last_model',
                     'wins': [],
                     'total_seconds': 0,
-                    'last_update': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    'last_update': datetime.datetime.now().strftime(
+                                                    "%Y-%m-%d %H:%M:%S")
             }
-            with open(config_path, 'w') as f:
-                json.dump(config, f)
+            self.sync_file_op(config_path, 'w', lambda f: json.dump(config, f))
             return config
         
     def save_config_file(self, config: dict):
         config_path = os.path.join(self.path, 'config.json')
-        with open(config_path, 'w') as f:
-            json.dump(config, f)
+        self.sync_file_op(config_path, "w", lambda f: json.dump(config, f, indent=4))
     
-    def player_wins(self, player: str):
+    def player_wins(self, player: str, remaining_moves: int):
         config = self.load_config_file()
-        config['wins'].append(player)
+        config['wins'].append(f"{player}-{-remaining_moves}")
         self.save_config_file(config)
 
     def predict(self, data):
         data = tf.expand_dims(data, axis=0)
-        value, policy = self.model.predict(data, verbose=0)
+        if self.remote:
+            value, policy = self.send_predict(data)
+        else:
+            value, policy = self.model.predict(data)
+            value = value[0]
+            policy = policy[0]
+        policy = tf.nn.softmax(policy)
         if tf.reduce_any(tf.math.is_nan(policy)):
             print(data, "\n", policy)
-            raise ValueError('keras.model.predict returned value with NaN\n'
-                             f"Input data: {data}\nPrediction: {value, policy}")
-        return value[0][0], tf.nn.softmax(policy[0])
+        return value[0], policy
+    
+    def send_train_remote(self, data):
+        post_response = requests.post(f"{self.server_url}/train_episode?model_path={self.path}",
+                                      data=pickle.dumps(data))
+        if post_response.status_code not in [200, 202]:
+            raise Exception(post_response.text)
+
+    def send_predict(self, data):
+        post_data = {
+            'model_path': self.path,
+            'data': data.numpy().tolist()
+        }
+        headers = {'Content-Type': 'application/json'}
+        post_response = requests.post(f"{self.server_url}/predict",
+                                      data=json.dumps(post_data),
+                                      headers=headers)
+        if post_response.status_code != 200:
+            raise Exception(post_response.text)
+        state_value, policy = pickle.loads(post_response.content)
+
+        return state_value, policy
     
     
     @tf.function
@@ -110,25 +145,20 @@ class Model:
         for e in range(epochs):
             (states_tensor, policies_tensor,
              action_taken_tensor, zs_tensor)  = self.sample(last_samples, 0.25)
-            for batch_start in tqdm(range(0, policies_tensor.shape[0],
-                                          batch_size)):
-                batch_state = states_tensor[batch_start:batch_start +\
-                                                   batch_size]
-                batch_policy = policies_tensor[batch_start:batch_start + batch_size]
-                batch_z = zs_tensor[batch_start:batch_start + batch_size]
-                batch_action_taken = action_taken_tensor[batch_start:batch_start + batch_size]
-                
-                with tf.GradientTape() as tape:
-                    v_pred, p_pred = self.model(batch_state, training=True)
-                    loss += self.loss_zero(batch_policy,
-                                          batch_z,
-                                          v_pred,
-                                          p_pred)
-                    
-                grads = tape.gradient(loss, self.model.trainable_weights)
-                self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
             
-            print(f"Done epoch {e+1}/{epochs}")
+            with tqdm(total=states_tensor.shape[0] // batch_size,
+                  desc="First episode") as pbar:
+                
+                for batch_start in range(policies_tensor.shape[0], step=batch_size):
+                    batch_state = states_tensor[batch_start:batch_start + batch_size]
+                    batch_policy = policies_tensor[batch_start:batch_start + batch_size]
+                    batch_z = zs_tensor[batch_start:batch_start + batch_size]
+                    batch_action_taken = action_taken_tensor[batch_start:batch_start + batch_size]
+
+                    loss = self.train_batch(batch_state, batch_policy, batch_z, batch_action_taken)
+
+                    pbar.set_description(f"Loss: {loss:.5e}")
+                    pbar.update()
 
 
     def train_episode(self, states: list[tuple[tf.Tensor,
@@ -136,37 +166,59 @@ class Model:
                                                list[Action],
                                                Action]],
                             batch_size: int=32):
+        
+        if self.remote:
+            self.send_train_remote(states)
+            return
 
-        with tqdm(total=len(states) // batch_size,
-                  desc="First episode") as pbar:
+        episode_states, episode_policy, episode_actions, episode_actions_taken, episode_z = zip(*states)
+
+        state_matrix = tf.stack(episode_states, axis=0)
+        policy_matrix = tf.stack([policy_to_policy_matrix(p, a)
+                         for p, a in zip(episode_policy,
+                                         episode_actions)], axis=0)
+        
+        action_takens_matrix = tf.stack(actions_to_indexes(episode_actions_taken), axis=0)
+        z_matrix = tf.constant(episode_z, shape=(len(episode_z), 1))
+        policy_matrix = tf.reshape(policy_matrix, (-1, BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2))
+
+
+        
+        (states_tensor, policies_tensor,
+         action_taken_tensor, zs_tensor) = self.sample((state_matrix, policy_matrix,
+                                                         action_takens_matrix, z_matrix),
+                                                         0.25)
+        
+        with tqdm(total=states_tensor.shape[0] // batch_size,
+                desc="First episode") as pbar:
             
-            for batch in ichunked(states, batch_size):
-                states_batch, _, _, actions_batch, z_batch = zip(*batch)
-                p_loss, v_loss = self.train_batch(
-                    states_batch,
-                    actions_batch,
-                    z_batch)
-                pbar.set_description(f"Value Loss: {v_loss:.5e}, "
-                                     f"Policy loss: {p_loss:.5e}")
+            for batch_start in range(0, policies_tensor.shape[0], batch_size):
+                batch_state = states_tensor[batch_start:batch_start + batch_size]
+                batch_policy = policies_tensor[batch_start:batch_start + batch_size]
+                batch_z = zs_tensor[batch_start:batch_start + batch_size]
+                batch_action_taken = action_taken_tensor[batch_start:batch_start + batch_size]
+
+                loss = self.train_batch(batch_state, batch_policy, batch_z, batch_action_taken)
+
+                pbar.set_description(f"Loss: {loss:.5e}")
                 pbar.update()
 
     def train_batch(self,
-                    states: list[tf.Tensor],
-                    actions: list[Action],
-                    z: list[float]):
-        states_batch = tf.stack(states)
-        z_batch = tf.constant(z, shape=(len(z), 1), dtype=tf.float32)
-        actions_tensor = tf.constant(actions_to_indexes(actions))
-        with tf.GradientTape() as tape:
-            v_pred, p_pred = self.model(states_batch, training=True)
-            loss, policy_loss, state_value_loss = self.loss_zero(z_batch,
-                                                                 v_pred,
-                                                                 p_pred,
-                                                                 actions_tensor)
+                    batch_state,
+                    batch_policy,
+                    batch_z,
+                    batch_action_taken):
         
+        with tf.GradientTape() as tape:
+            v_pred, p_pred = self.model(batch_state, training=True)
+            loss = self.loss_zero(batch_policy,
+                                    batch_z,
+                                    v_pred,
+                                    p_pred)
+            
         grads = tape.gradient(loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
-        return policy_loss, state_value_loss
+        return loss
 
 
     def get_last_samples(self, number_of_samples: int=100_000
@@ -191,8 +243,8 @@ class Model:
         }
         for filename, _ in sorted(file_indexes, key=lambda x: x[1],
                                   reverse=True):
-            with open(os.path.join(self.path, filename), "rb") as f:
-                file_data = pickle.load(f)
+            file_data = self.sync_file_op(os.path.join(self.path, filename), "rb",
+                              lambda f: pickle.load(f))
 
             file_state, file_policy, file_actions, file_actions_taken, file_z = zip(*file_data)
             data_loaded['state'].extend(file_state)
@@ -237,6 +289,18 @@ class Model:
         if os.path.isdir(current_model_path):
             return current_model_path
         return None
+    
+    def sync_file_op(self, file_path, mode, func,  retry_time=0.01):
+        while True:
+            try:
+                with open(file_path, mode) as f:
+                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    data = func(f)
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                    break
+            except IOError:
+                time.sleep(retry_time)
+        return data
 
     def save_cache(self, cache: list[list], cache_mb_size:int=20):
         # Made with ChatGPT ;)
@@ -266,13 +330,12 @@ class Model:
                 cache_data = []
             else:
                 # Load the latest cache file
-                with open(latest_cache_file, "rb") as f:
-                    cache_data = pickle.load(f)
+                cache_data = self.sync_file_op(latest_cache_file, "rb", lambda f: pickle.load(f))
 
                 # Otherwise, append to the latest cache file
                 cache_filename = latest_cache_file
         
         # Append the new data to the cache
         cache_data.extend(cache)
-        with open(cache_filename, "wb") as f:
-            pickle.dump(cache_data, f)
+        self.sync_file_op(cache_filename, "wb",
+                          lambda f: pickle.dump(cache_data, f))
