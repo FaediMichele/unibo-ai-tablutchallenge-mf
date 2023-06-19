@@ -2,7 +2,7 @@ import time
 from games.tablut.game import Action
 import tensorflow as tf
 from tensorflow import keras
-from keras import layers
+from tensorflow.keras import layers
 import tensorflow.keras.backend as K
 from tqdm import tqdm
 import numpy as np
@@ -14,12 +14,13 @@ import random
 from more_itertools import ichunked
 import requests
 import fcntl
+from typing import Union
 
-from .util import boolean_mask_from_coordinates, no_repetition_actions, actions_to_indexes, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATIONS, BOARD_SIZE
+from .util import boolean_mask_from_coordinates, no_repetition_actions, correct_actions, actions_to_indexes, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATIONS, BOARD_SIZE
 
 
 class Model:
-    def __init__(self, path: str=None, remote=False, server_url="http://0.0.0.0:6000") -> None:
+    def __init__(self, path: str=None, remote=False, server_url="http://0.0.0.0:6000", train_no_repetition=True) -> None:
         if path is None:
             path = f'models/{"" if BOARD_SIZE == 9 else "simple_"}reinforce'
         self.model: keras.Model = None
@@ -27,13 +28,14 @@ class Model:
         self.path = path
         self.first_game = True
         self.remote = remote
+        self.train_no_repetition = train_no_repetition
         self.server_url = server_url
         if not remote:
             self.load_model()
 
     def load_model(self):
         if self.optimizer is None:
-            self.optimizer = keras.optimizers.Adam()
+            self.optimizer = keras.optimizers.Adam(learning_rate=1e-4)
 
         model_path = self.get_last_model_path()
         if model_path is not None:
@@ -105,7 +107,11 @@ class Model:
             value, policy = self.model.predict(data)
             value = value[0]
             policy = policy[0]
-        policy = tf.nn.softmax(policy)
+
+        policy = tf.reshape(policy, [BOARD_SIZE * BOARD_SIZE * BOARD_SIZE * 2])
+        policy = tf.nn.softmax(policy, axis=0)
+        policy = tf.reshape(policy, [BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2])
+        
         if tf.reduce_any(tf.math.is_nan(policy)):
             print(data, "\n", policy)
         return value[0], policy
@@ -131,7 +137,6 @@ class Model:
 
         return state_value, policy
 
-    
     def loss_fn(self, states, z, v_pred, p_pred, actions_tensor):
         # The d value must not be optimized, is considered as a constant
         d = tf.stop_gradient(z - v_pred)
@@ -139,8 +144,8 @@ class Model:
         
         # shape = batch, height x width x (height + width (orthogonal slide))
         p_pred_flat = tf.reshape(p_pred, [p_pred.shape[0], BOARD_SIZE * BOARD_SIZE * BOARD_SIZE * 2])
-        # p_pred_flat = tf.nn.log_softmax(p_pred_flat, axis=1)
-        p_pred_flat = tf.math.log(tf.nn.softmax(p_pred_flat, axis=1) + 1e-15)
+        p_pred_flat = tf.nn.log_softmax(p_pred_flat, axis=1)
+        # p_pred_flat = tf.math.log(tf.nn.softmax(p_pred_flat, axis=1) + 1e-15)
         p_softmax = tf.reshape(p_pred_flat, [p_pred.shape[0], BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2])
 
         r = tf.expand_dims(tf.range(actions_tensor.shape[0]), axis=1)
@@ -150,11 +155,21 @@ class Model:
         policy_loss = -tf.reduce_mean(selected_log_policy * d)
 
         # Discourage action that leads to repeated states
-        action_repeated = [no_repetition_actions(states[idx]) for idx in range(z.shape[0])]
-        mask = boolean_mask_from_coordinates(action_repeated)
-        repeated_actions = tf.boolean_mask(p_softmax, mask)
+        if self.train_no_repetition:
+            action_repeated = [no_repetition_actions(states[idx]) for idx in range(z.shape[0])]
+            mask = boolean_mask_from_coordinates(action_repeated)
+            repeated_actions = tf.boolean_mask(p_softmax, mask)
 
-        return state_value_loss + policy_loss + repeated_actions, policy_loss, state_value_loss, tf.reduce_mean(d)
+            actions_correct = [correct_actions(states[idx]) for idx in range(z.shape[0])]
+            mask_actions_correct = boolean_mask_from_coordinates(actions_correct, positives=False)
+            not_actions_correct = tf.boolean_mask(p_softmax, mask_actions_correct)
+
+            return state_value_loss + policy_loss + repeated_actions + not_actions_correct, policy_loss, state_value_loss, tf.reduce_mean(d)
+        else:
+            return state_value_loss + policy_loss, policy_loss, state_value_loss, tf.reduce_mean(d)
+        
+
+        
     
     
     def train_episode(self, state_action_z: list[tuple[tf.Tensor, Action, float]], batch_size:int=32) -> float:
@@ -276,7 +291,7 @@ class Model:
         return (tf.boolean_mask(states, mask),
                 tf.boolean_mask(zs, mask))
     
-    def get_last_model_path(self) -> str | None:
+    def get_last_model_path(self) -> Union[str, None]:
         config = self.load_config_file()
         current_model_path = os.path.join(self.path, config['current'])
         if os.path.isdir(current_model_path):
@@ -294,6 +309,9 @@ class Model:
                     break
             except IOError:
                 time.sleep(retry_time)
+            except EOFError:
+                time.sleep(retry_time)
+
         return data
 
     def save_cache(self, cache: list[tuple[tf.Tensor, float]],
@@ -344,38 +362,89 @@ class Model:
         policy_output = self.create_policy_network(input_shape, policy_shape)(input_layer)
         state_value_output = self.create_value_network(input_shape)(input_layer)
         model = tf.keras.Model(inputs=input_layer, outputs=[state_value_output, policy_output])
+        model.compile(loss=self.loss_fn)
         return model
         
 
     def create_policy_network(self, input_shape, policy_shape):
         # Made with ChatGPT with few corrections ;)
-        input_layer = keras.Input(shape=input_shape)
-        x = layers.Conv2D(64, (3, 3), activation='relu')(input_layer)
-        x = layers.MaxPooling2D((2, 2))(x)
-        x = layers.Conv2D(128, (3, 3), activation='relu')(x)
-        x = layers.MaxPooling2D((2, 2))(x)
-        x = layers.Conv2D(256, (3, 3), activation='relu')(x)
-        x = layers.Flatten()(x)
-        x = layers.Dense(512, activation='relu')(x)
-        
+        inputs = tf.keras.Input(shape=input_shape)
+
+        # Stem
+        x = layers.Conv2D(filters=32, kernel_size=3, padding='same')(inputs)
+        x = layers.BatchNormalization()(x)
+        x = layers.ReLU()(x)
+
+        # Main Blocks
+        num_blocks = 2  # Number of blocks in the network
+        num_filters = 32  # Initial number of filters
+
+        for i in range(num_blocks):
+            # Residual Path
+            residual = x
+
+            # Middle Block
+            x = layers.Conv2D(filters=num_filters, kernel_size=3, padding='same')(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.ReLU()(x)
+
+            x = layers.Conv2D(filters=num_filters, kernel_size=3, padding='same')(x)
+            x = layers.BatchNormalization()(x)
+
+            # Skip Connection
+            if i % 2 == 0 and i > 0:
+                residual = layers.Conv2D(filters=num_filters, kernel_size=1, padding='same')(residual)
+                residual = layers.BatchNormalization()(residual)
+
+                x = layers.Add()([x, residual])
+            x = layers.ReLU()(x)
+
+            # Increase number of filters
+            num_filters *= 2
+        x = layers.GlobalAveragePooling2D()(x)
         dense_shape = policy_shape[0] * policy_shape[1] * policy_shape[2]
-        x = layers.Dense(dense_shape, activation='linear')(x)
+        x = layers.Dense(dense_shape, activation='relu')(x)
         x = layers.Reshape(policy_shape)(x)
         
 
-        return tf.keras.Model(inputs=input_layer, outputs=x)
+        return tf.keras.Model(inputs=inputs, outputs=x)
 
     def create_value_network(self, input_shape):
         # Made with ChatGPT with few corrections ;)
-        input_layer = keras.Input(shape=input_shape)
-        x = layers.Conv2D(64, (3, 3), activation='relu')(input_layer)
-        x = layers.MaxPooling2D((2, 2))(x)
-        x = layers.Conv2D(128, (3, 3), activation='relu')(x)
-        x = layers.MaxPooling2D((2, 2))(x)
-        x = layers.Conv2D(256, (3, 3), activation='relu')(x)
-        x = layers.Flatten()(x)
-        x = layers.Dense(512, activation='relu')(x)
-        x = layers.Dense(1, activation='linear')(x)
-        
+        inputs = tf.keras.Input(shape=input_shape)
 
-        return tf.keras.Model(inputs=input_layer, outputs=x)
+        # Stem
+        x = layers.Conv2D(filters=32, kernel_size=3, padding='same')(inputs)
+        x = layers.BatchNormalization()(x)
+        x = layers.ReLU()(x)
+
+        # Main Blocks
+        num_blocks = 3  # Number of blocks in the network
+        num_filters = 32  # Initial number of filters
+
+        for i in range(num_blocks):
+            # Residual Path
+            residual = x
+
+            # Middle Block
+            x = layers.Conv2D(filters=num_filters, kernel_size=3, padding='same')(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.ReLU()(x)
+
+            x = layers.Conv2D(filters=num_filters, kernel_size=3, padding='same')(x)
+            x = layers.BatchNormalization()(x)
+
+            # Skip Connection
+            if i % 2 == 0 and i > 0:
+                residual = layers.Conv2D(filters=num_filters, kernel_size=1, padding='same')(residual)
+                residual = layers.BatchNormalization()(residual)
+                x = layers.Add()([x, residual])
+            x = layers.ReLU()(x)
+
+            # Increase number of filters
+            num_filters *= 2
+        x = layers.GlobalAveragePooling2D()(x)
+
+        x = layers.Dense(1, activation='linear')(x)
+
+        return tf.keras.Model(inputs=inputs, outputs=x)

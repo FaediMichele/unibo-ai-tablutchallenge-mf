@@ -1,49 +1,20 @@
-name: tablut
+# Installing everything together seems to not work
+# So before everything install numpy then tensorflow-gpu then
+# update the environment with this stuff
+#
+# conda install numpy=1.23
+# conda install tensorflow-gpu=2.6.0
+
 channels:
   - conda-forge
-  - defaults
+  - anaconda
 dependencies:
-  - ca-certificates=2021.10.26
-  - docutils=0.18
-  - freetype=2.10.4
-  - glew=2.1.0
-  - intel-openmp=2021.4.0
-  - jbig=2.1
-  - jpeg=9d
-  - kivy=2.0.0
-  - kivymd=0.104.1
-  - lcms2=2.12
-  - lerc=3.0
-  - libblas=3.9.0
-  - libcblas=3.9.0
-  - libdeflate=1.8
-  - liblapack=3.9.0
-  - libpng=1.6.37
-  - libtiff=4.3.0
-  - libzlib=1.2.11
-  - lz4-c=1.9.3
-  - mkl=2021.4.0
-  - olefile=0.46
-  - openjpeg=2.4.0
-  - openssl=3.0.0
-  - pillow=8.3.2
-  - pip=21.3.1
-  - pygments=2.10.0
-  - python=3.9.7
-  - python_abi=3.9
-  - sdl2=2.0.12
-  - sdl2_image=2.0.5
-  - sdl2_mixer=2.0.4
-  - sdl2_ttf=2.0.15
-  - setuptools=58.5.3
-  - smpeg2=2.0.0
-  - sqlite=3.36.0
-  - tbb=2021.4.0
-  - tk=8.6.11
-  - tzdata=2021e
-  - wheel=0.37.0
-  - xz=5.2.5
-  - zlib=1.2.11
-  - zstd=1.5.0
+  - uvicorn
+  - fastapi
+  - fastapi_utils
+  - more-itertools
+  - requests
+  - tqdm
+  - termcolor
   - pip:
-      - pymitter==0.3.1
+      - pymitter==0.4.0

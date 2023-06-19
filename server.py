@@ -1,4 +1,7 @@
 import json
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 from fastapi import BackgroundTasks, FastAPI, Response, Request
 from fastapi.responses import StreamingResponse
 from fastapi_utils.tasks import repeat_every
@@ -33,10 +36,11 @@ class SaveFileInputData(BaseModel):
     config_file: str
 
 # Timer in second to predict the received data
-queue_time = 0.03
+queue_time = 0.001
 
 # How many train request received before actually train
-train_size = 10
+train_size = 10_000
+train_batch_size = 256
 
 loaded_models = {}
 batch_data: dict[str, dict[int, tf.Tensor]] = {}
@@ -47,47 +51,65 @@ session_id_to_model_path = {}
 prediction_ready = {}
 training_event = {}
 train_episode_data = {}
-config_file_semaphore = asyncio.Semaphore(1)
+predicting_phase = asyncio.Event()
+predicting_phase.set()
 
 models_paths = {
-    'simple_reinforce': ("models/simple_reinforce", RSModel),
-    'simple_alpha_zero': ("models/simple_alpha_zero", AZSModel),
-    'simple_alpha_reinforce': ("models/simple_alpha_reinforce", ARSModel),
+    'models/simple_reinforce': ("models/simple_reinforce", RSModel),
+    'models/simple_alpha_zero': ("models/simple_alpha_zero", AZSModel),
+    'models/simple_alpha_reinforce': ("models/simple_alpha_reinforce", ARSModel),
 
-    'reinforce': ("models/reinforce", RNModel),
-    'alpha_zero': ("models/alpha_zero", AZNModel),
-    'alpha_reinforce': ("models/alpha_reinforce", ARNModel),
+    'models/reinforce': ("models/reinforce", RNModel),
+    'models/alpha_zero': ("models/alpha_zero", AZNModel),
+    'models/alpha_reinforce': ("models/alpha_reinforce", ARNModel),
 }
-
 
 train_requests = {
-    'simple_reinforce': 0,
-    'simple_alpha_zero': 0,
-    'simple_alpha_reinforce': 0,
-    'reinforce': 0,
-    'alphazero': 0,
-    'alpha_reinforce': 0,
+    'models/simple_reinforce': 0,
+    'models/simple_alpha_zero': 0,
+    'models/simple_alpha_reinforce': 0,
+    'models/reinforce': 0,
+    'models/alphazero': 0,
+    'models/alpha_reinforce': 0,
 }
+
+
+@app.on_event("startup")
+def load_models():
+    global loaded_models
+    for key, (_, model_class) in models_paths.items():
+        loaded_models[key] = model_class().model
+        print(key, "loaded")
 
 @app.on_event("startup")
 @repeat_every(seconds=queue_time)
 async def process_batch_automatic_caller() -> None:
+    await predicting_phase.wait()
+    predicting_phase.clear()
+    await process_batches()
+    predicting_phase.set()
+
+
+async def process_batches():
+    global test_loaded_models
     for model_path in batch_data.keys():
         if ((model_path not in training_event or 
              training_event[model_path].is_set()) and
             len(batch_data[model_path]) > 0):
+            
             process_batch(model_path)
 
 def process_batch(model_path):
-    global batch_data, batch_result, prediction_ready
+    global batch_data, batch_result, prediction_ready, loaded_models
     
     # Convert the batch data to a NumPy array
     data_keys, data_values = list(zip(*batch_data[model_path].items()))
 
     batch_tensor = tf.concat(data_values, axis=0)
     # Make predictions using the TensorFlow model
-    predictions = list(zip(*loaded_models[model_path].predict(batch_tensor)))
-    
+    with tf.device('/device:GPU:0'):
+        predictions = list(zip(*loaded_models[model_path].predict(batch_tensor, verbose=1)))
+
     for key, b_pred in zip(data_keys, predictions):
         batch_result[key] = b_pred
         del batch_data[model_path][key]
@@ -106,7 +128,8 @@ async def train(model: str):
             training_event[model].clear()
             path, model_class = models_paths[model]
             model = model_class(path)
-            model.train_model()
+            with tf.device('/device:GPU:0'):
+                model.train_model(batch_size=train_batch_size)
             model.save_model()
             loaded_models[path] = model.model
             training_event[model].set()
@@ -142,7 +165,7 @@ async def train_model_episodes(model_path):
     data_for_training = train_episode_data[model_path]
     del train_episode_data[model_path]
     model = model_class(path)
-    model.train_episode(data_for_training)
+    model.train_episode(data_for_training, batch_size=train_batch_size)
     model.save_model()
 
     loaded_models[path] = model.model
@@ -168,14 +191,11 @@ async def predict(data: InputData):
 
     my_session_id = last_session_id
     if data.model_path not in batch_data:
-        loaded_models[data.model_path] = tf.keras.models.load_model(models_paths[data.model_path][0] + "/last_model")
         batch_data[data.model_path] = {}
-
     
     session_id_to_model_path[my_session_id] = data.model_path
     batch_data[data.model_path][my_session_id] = tf.convert_to_tensor(data.data)
     my_event = asyncio.Event()
     prediction_ready[my_session_id] = my_event
-    while True:
-        await my_event.wait()
-        return Response(pickle.dumps(get_result(my_session_id)), status_code=200)
+    await my_event.wait()
+    return Response(pickle.dumps(get_result(my_session_id)), status_code=200)

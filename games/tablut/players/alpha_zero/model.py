@@ -2,7 +2,7 @@ import random
 import time
 import tensorflow as tf
 from tensorflow import keras
-from keras import layers
+from tensorflow.keras import layers
 from tqdm import tqdm
 import numpy as np
 import json
@@ -12,6 +12,7 @@ import datetime
 from games.tablut.game import State, Action
 import requests
 import fcntl
+from typing import Union
 
 from .util import policy_to_policy_matrix, actions_to_indexes, SAVE_ITERATIONS, BOARD_SIZE
 
@@ -99,7 +100,11 @@ class Model:
             value, policy = self.model.predict(data)
             value = value[0]
             policy = policy[0]
-        policy = tf.nn.softmax(policy)
+
+        policy = tf.reshape(policy, [BOARD_SIZE * BOARD_SIZE * BOARD_SIZE * 2])
+        policy = tf.nn.softmax(policy, axis=0)
+        policy = tf.reshape(policy, [BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2])
+
         if tf.reduce_any(tf.math.is_nan(policy)):
             print(data, "\n", policy)
         return value[0], policy
@@ -125,15 +130,17 @@ class Model:
 
         return state_value, policy
     
-    
     @tf.function
-    def loss_zero(self, pi, z, v_pred, p_pred):        
+    def loss_fn(self, pi, z, v_pred, p_pred):        
         mse = tf.reduce_mean(keras.losses.mean_squared_error(z, v_pred))
-        p_pred_prob = tf.nn.softmax(p_pred)
+
+        p_pred_flat = tf.reshape(p_pred, [p_pred.shape[0], BOARD_SIZE * BOARD_SIZE * BOARD_SIZE * 2])
+        p_pred_flat = tf.nn.softmax(p_pred_flat, axis=1)
+        p_pred_prob = tf.reshape(p_pred_flat, [p_pred.shape[0], BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2])
+        
         cross_entropy = tf.reduce_mean(keras.losses.categorical_crossentropy(pi, p_pred_prob))
         penalty = sum(self.model.losses)
-
-        return mse + cross_entropy + penalty
+        return mse + cross_entropy + penalty, mse, cross_entropy
     
     def train_model(self,
                     batch_size: int=32,
@@ -148,16 +155,21 @@ class Model:
             
             with tqdm(total=states_tensor.shape[0] // batch_size,
                   desc="First episode") as pbar:
+                p_sum = 0
+                v_sum = 0
                 
-                for batch_start in range(policies_tensor.shape[0], step=batch_size):
+                for k, batch_start in enumerate(range(0, policies_tensor.shape[0], batch_size)):
                     batch_state = states_tensor[batch_start:batch_start + batch_size]
                     batch_policy = policies_tensor[batch_start:batch_start + batch_size]
                     batch_z = zs_tensor[batch_start:batch_start + batch_size]
                     batch_action_taken = action_taken_tensor[batch_start:batch_start + batch_size]
 
-                    loss = self.train_batch(batch_state, batch_policy, batch_z, batch_action_taken)
+                    loss, v_loss, p_loss = self.train_batch(batch_state, batch_policy, batch_z, batch_action_taken)
 
-                    pbar.set_description(f"Loss: {loss:.5e}")
+                    p_sum += p_loss
+                    v_sum += v_loss
+                    pbar.set_description(f"Value Loss: {v_sum / (k + 1):.5e}, "
+                                        f"Policy loss: {p_sum / (k + 1):.5e}")
                     pbar.update()
 
 
@@ -198,9 +210,9 @@ class Model:
                 batch_z = zs_tensor[batch_start:batch_start + batch_size]
                 batch_action_taken = action_taken_tensor[batch_start:batch_start + batch_size]
 
-                loss = self.train_batch(batch_state, batch_policy, batch_z, batch_action_taken)
+                loss, v_loss, p_loss = self.train_batch(batch_state, batch_policy, batch_z, batch_action_taken)
 
-                pbar.set_description(f"Loss: {loss:.5e}")
+                pbar.set_description(f"Loss: {loss:.5e}, Value: {v_loss:.5e}, Policy: {p_loss:.5e}")
                 pbar.update()
 
     def train_batch(self,
@@ -208,17 +220,20 @@ class Model:
                     batch_policy,
                     batch_z,
                     batch_action_taken):
-        
-        with tf.GradientTape() as tape:
-            v_pred, p_pred = self.model(batch_state, training=True)
-            loss = self.loss_zero(batch_policy,
-                                    batch_z,
-                                    v_pred,
-                                    p_pred)
+        for _ in range(4):
+            with tf.GradientTape() as tape:
+                v_pred, p_pred = self.model(batch_state, training=True)
+                loss , v_loss, p_loss = self.loss_fn(batch_policy,
+                                        batch_z,
+                                        v_pred,
+                                        p_pred)
+
+            batch_state = tf.image.rot90(batch_state)
+            batch_policy = tf.image.rot90(batch_policy)
             
-        grads = tape.gradient(loss, self.model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
-        return loss
+            grads = tape.gradient(loss, self.model.trainable_weights)
+            self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+        return loss, v_loss, p_loss
 
 
     def get_last_samples(self, number_of_samples: int=100_000
@@ -245,7 +260,7 @@ class Model:
                                   reverse=True):
             file_data = self.sync_file_op(os.path.join(self.path, filename), "rb",
                               lambda f: pickle.load(f))
-
+            print(f"loaded {filename}")
             file_state, file_policy, file_actions, file_actions_taken, file_z = zip(*file_data)
             data_loaded['state'].extend(file_state)
             data_loaded['policy'].extend(file_policy)
@@ -283,7 +298,7 @@ class Model:
                 tf.boolean_mask(action_takens, mask),
                 tf.boolean_mask(zs, mask))
     
-    def get_last_model_path(self) -> str | None:
+    def get_last_model_path(self) -> Union[str, None]:
         config = self.load_config_file()
         current_model_path = os.path.join(self.path, config['current'])
         if os.path.isdir(current_model_path):
@@ -299,6 +314,8 @@ class Model:
                     fcntl.flock(f, fcntl.LOCK_UN)
                     break
             except IOError:
+                time.sleep(retry_time)
+            except EOFError:
                 time.sleep(retry_time)
         return data
 

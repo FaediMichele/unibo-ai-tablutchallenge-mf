@@ -8,11 +8,12 @@ import tensorflow as tf
 import datetime
 import random
 import logging
+from typing import Union
 
 class Reinforce(Player):
     ''' Player that take random actions '''
 
-    def __init__(self, make_move: Callable[[None | State |Action], None],
+    def __init__(self, make_move: Callable[[Union[None, State, Action]], None],
                  board: Board,
                  game: Game,
                  player: int,

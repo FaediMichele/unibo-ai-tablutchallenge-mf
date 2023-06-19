@@ -142,17 +142,17 @@ def init_player(class_name, model_path, game, board, player_name, ms_for_search)
     if type(game) == NormalGame:
         if class_name == "r":
             model = NRModel(model_path)
-            player = NReinforce(None, board, game, player_name, model, False)
+            player = NReinforce(None, board, game, player_name, model, True)
         elif class_name == "z":
             model = NZModel(model_path)
-            player = NAlphaTablutZero(None, board, game, player_name, model, False, ms_for_search)
+            player = NAlphaTablutZero(None, board, game, player_name, model, True, ms_for_search)
         elif class_name == "m":
             player = NMinMax(None, board, game, player_name, ms_for_search)
     
     elif type(game) == SimpleGame:
         if class_name == "r":
             model = SRModel(model_path)
-            player = SReinforce(None, board, game, player_name, model, True)
+            player = SReinforce(None, board, game, player_name, model, False)
         elif class_name == "z":
             model = SZModel(model_path)
             player = SAlphaTablutZero(None, board, game, player_name, model, False, ms_for_search)

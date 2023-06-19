@@ -4,13 +4,13 @@ from collections import defaultdict
 import math
 import tensorflow as tf
 from .util import PREVIOUS_STATE_TO_MODEL
+from typing import Union
 
 class Tree:
-    def __init__(self, player: int, state: State,
+    def __init__(self, state: State,
                  parent_action: tuple[Any, Action]=None) -> None:
         assert parent_action is None or isinstance(parent_action[0], Tree)
         self.state = state
-        self.player = player
         self.N: dict[Action, int] = defaultdict(lambda: 0.1)
         self.W: dict[Action, float] = defaultdict(lambda: 0.0)
         self.Q: dict[Action, float] = defaultdict(lambda: 0.0)
@@ -18,19 +18,19 @@ class Tree:
         self.parent_child: dict[Action, Tree] = dict()
         self.actions: list[Action] = None
         self.explored_branch: bool = False
-        self.parent_action: tuple[Tree, Action] | None = parent_action
+        self.parent_action: Union[tuple[Tree, Action], None] = parent_action
     
     def expand(self, child_state: State, action: Action, p: float):
-        child_tree = Tree(self.player, child_state, (self, action))
+        child_tree = Tree(child_state, (self, action))
         self.parent_child[action] = child_tree
         self.P[action] = p
 
-    def backup(self, value: float, invert: bool=False):
+    def backup(self, value: float):
         if self.parent_action is not None:
             parent, action = self.parent_action
             parent.W[action] += value
             parent.Q[action] = parent.W[action] / parent.N[action]
-            parent.backup(-value if invert else value)
+            parent.backup(value)
 
     def upper_confidence_bound(self, action: Action, cput: float = 5.0):
         return cput * self.P[action] * \

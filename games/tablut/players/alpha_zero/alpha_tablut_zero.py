@@ -8,6 +8,7 @@ from tqdm import tqdm
 import datetime
 from collections import defaultdict
 import gc
+from typing import Union
 
 from games.board import Board
 from games.game import Game, State, Action
@@ -16,10 +17,12 @@ from .util import state_hashable, argmax, unhash_state, policy_matrix_to_policy,
 from .tree import Tree
 from .model import Model
 
+shared_tree: Tree = None
+
 class AlphaTablutZero(Player):
     ''' Player that take random actions '''
 
-    def __init__(self, make_move: Callable[[None | State |Action], None],
+    def __init__(self, make_move: Callable[[Union[None, State, Action]], None],
                  board: Board,
                  game: Game,
                  player: int,
@@ -42,7 +45,6 @@ class AlphaTablutZero(Player):
         self.ms_for_search = ms_for_search
         self.node_for_search = node_for_search
         self.cache: list[tuple[tf.Tensor, list[float], list[Action], Action]] = []
-        self.tree: Tree = None
         self.training = training
         self.model = model
         super(Player, self).__init__()
@@ -54,28 +56,30 @@ class AlphaTablutZero(Player):
         Keyword arguments:
         last_action -- the last move that the opponent have take
         '''
-        if self.tree is None:
-            self.tree = Tree(self.player, self.board.state)
+        global shared_tree
+        if shared_tree is None:
+            shared_tree = Tree(self.player, self.board.state)
         else:
-            if last_action in self.tree.parent_child:
-                self.tree = self.tree.parent_child[last_action]
-                self.tree.parent = None
+            if last_action in shared_tree.parent_child:
+                old_shared_tree = shared_tree
+                shared_tree = shared_tree.parent_child[last_action]
+                del old_shared_tree
             else:
-                self.tree = Tree(self.player, self.board.state)
+                shared_tree = Tree(self.player, self.board.state)
         gc.collect()
-        policy = self._mcts(self.tree, state_history, self.ms_for_search,
+        policy = self._mcts(shared_tree, state_history, self.ms_for_search,
                             training=self.training)
         if self.training:
             # the if is true when the model assign 0 probability to all
             # possible moves
             if sum(policy) < 0.001:
-                action_taken = random.choice(self.tree.actions)[0]
+                action_taken = random.choice(shared_tree.actions)[0]
             else:
-                action_taken = random.choices(self.tree.actions, policy)[0]
+                action_taken = random.choices(shared_tree.actions, policy)[0]
             self.cache[-1].append(action_taken)
             self.make_move(action_taken)
         else:
-            self.make_move(self.tree.actions[argmax(range(len(policy)),
+            self.make_move(shared_tree.actions[argmax(range(len(policy)),
                                                     key=lambda x: policy[x])])
 
     def end(self, last_action: Action, opponent: Player, winner: str):
@@ -137,15 +141,18 @@ class AlphaTablutZero(Player):
                 s.N[a_star] += 1
                 s = child
                 tree_depth += 1
-            c += 1
+            
 
             if s.actions is None:
                 s.actions = tuple(self.game.actions(s.state))
                 p, v, is_final = self._evaluate_state(s, state_history)
                 self._expand(s, p)
                 self._backup(s, v, is_final)
+                c += 1
             else:
-                print(f"found terminal state. {s.parent_action[0].N[a_star]}")
+                pass
+                #print(f"found terminal state. {s.parent_action[0].N[a_star]}")
+        print(f"analized {c} states")
         count_action_taken = [root.N[a] ** (1 / temperature)
                               for a in root.actions]
         denominator_policy = sum(count_action_taken)

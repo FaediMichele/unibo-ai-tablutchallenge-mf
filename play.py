@@ -8,7 +8,6 @@ warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 from games.tablut_simple.players.reinforce import Reinforce as R, Model as ModelR
-from games.tablut_simple.players.reinforce_no_repetition import Reinforce as RN, Model as ModelRN
 from games.tablut_simple.players.alpha_zero import AlphaTablutZero, Model as ModelZ
 from games.tablut_simple.players.alpha_reinforce import AlphaTablutReinforce, Model as ModelZR
 from games.tablut_simple.players.console import Console
@@ -77,9 +76,9 @@ def main():
                                                   player1, player2,
                                                   action))
 
-    model2 = ModelRN()
+    model2 = ModelR()
     player1 = Console(make_move, board, game, 1)
-    player2 = RN(make_move, board, game, 0, model=model2, training=False)
+    player2 = R(make_move, board, game, 0, model=model2, training=False)
 
     on_ready = partial(loaded, board, game, player1, player2)
 

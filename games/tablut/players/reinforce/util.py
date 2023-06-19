@@ -84,16 +84,30 @@ def no_repetition_actions(state_tensor: tf.Tensor) -> list[tuple[int,int,int]]:
     ret =  actions_to_indexes(actions_to_discourage)
     return ret
 
-def boolean_mask_from_coordinates(batch_action_list: list[list[tuple[int,int,int]]]) -> tf.Tensor:
+def correct_actions(state_tensor: tf.Tensor) -> list[tuple[int,int,int]]:
+    actual_board = state_tensor[:, : , 0].numpy().tolist()
+    player = int(float(state_tensor[0, 0, -1].numpy()) / 2 + 0.5) + 1 % 2
+    actual_game_state = player, actual_board, -10
+    game = Game()
+    actions = game.actions(actual_game_state)
+    return actions_to_indexes(actions)
+
+def boolean_mask_from_coordinates(batch_action_list: list[list[tuple[int,int,int]]], positives=True) -> tf.Tensor:
     batch_size = len(batch_action_list)
-    mask = tf.zeros((batch_size, BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2), dtype=tf.bool)
+    if positives:
+        mask = tf.zeros((batch_size, BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2), dtype=tf.bool)
+    else:
+        mask = tf.ones((batch_size, BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2), dtype=tf.bool)
     mask = [
         [[[False for _ in range(BOARD_SIZE * 2)] for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
         for _ in range(batch_size)
     ]
     for batch_idx, coordinates in enumerate(batch_action_list):
         for coord in coordinates:
-            mask[batch_idx][coord[0]][coord[1]][coord[2]] = True
+            if positives:
+                mask[batch_idx][coord[0]][coord[1]][coord[2]] = True
+            else:
+                mask[batch_idx][coord[0]][coord[1]][coord[2]] = False
     
     return tf.convert_to_tensor(mask, dtype=tf.bool)
 

@@ -7,6 +7,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 from games.tablut_simple.players.reinforce import Reinforce as SReinforce, Model as SRModel
 from games.tablut_simple.players.alpha_zero import AlphaTablutZero as SAlphaTablutZero, Model as SZModel
 from games.tablut_simple.players.alpha_reinforce import AlphaTablutReinforce as SAlphaTablutReinforce, Model as SARModel
@@ -64,7 +67,6 @@ def main():
     create_player1 = partial(init_player, player_class, player_model_path, game, board, 0, thinking_time, remote)
     create_player2 = partial(init_player, player_class, player_model_path, game, board, 1, thinking_time, remote)
     player1 = create_player1()
-    print("CREATED PLAYER 1", player1)
     player2 = create_player2()
 
     board.event.on("loaded", loaded)
@@ -160,7 +162,6 @@ def init_player(class_name, model_path, game, board, player, ms_for_search, remo
             else:
                 model = SARModel(remote=remote)
             player = SAlphaTablutReinforce(None, board, game, player, model, True, ms_for_search)
-            print("RETURNED PLAYER", player)
         if class_name == "r":
             if model_path is not None:
                 model = SRModel(model_path, remote=remote)
