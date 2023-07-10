@@ -1,6 +1,0 @@
-#|/bin/bash
-
-while :
-do
-	python self_play.py --player_class z --game_type n --remote --thinking_time 5000
-done

@@ -41,6 +41,7 @@ class Board:
                 while len(self.scheduler) > 0:
                     co = (self.scheduler.pop())()
                     if asyncio.iscoroutinefunction(co):
+                        print("here")
                         await co
                 self.event.emit('end_of_game')
         asyncio.run(sched())

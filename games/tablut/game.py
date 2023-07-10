@@ -172,6 +172,22 @@ class Game():
         if player not in self.__player_pieces_values:
             raise Exception("Player not found")
         return self.__player_pieces_values[player]
+    
+    def utility(self, state: State, player: str) -> float:
+        ''' Return the value of this final state to player
+
+        Keyword arguments:
+        state -- the state of the game. The current player is ignored
+        player -- the player that want to know the value of a final state
+        '''
+        assert self.is_terminal(state), "This state is not terminal"
+        if state[2] >= 0:
+            return -0.1
+        
+        king_pos = self.where(state[1], [self.king])
+        if len(king_pos) == 0:
+            return -1 if player == 0 else 1
+        return 1 if player == 0 else -1
 
 
 if __name__ == '__main__':

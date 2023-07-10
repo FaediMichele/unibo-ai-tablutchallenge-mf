@@ -1,4 +1,5 @@
-models/*
+*.pickle
+old_model*
 
 .DS_STORE
 

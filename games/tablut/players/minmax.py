@@ -42,7 +42,7 @@ def heuristic( state: State, player: int, min_max: bool) -> float:
                                                    (king_pos[0] + 1, king_pos[1]),
                                                    (king_pos[0], king_pos[1] - 1),
                                                    (king_pos[0], king_pos[1] + 1)]])
-    player_index = -2 * player + 1
+    player_index = 2 * player - 1 if min_max else -2 * player + 1
     
     if (player == 0 and not min_max) or (player == 1 and min_max):
         min_max_player = 1
@@ -87,7 +87,7 @@ def cache(function):
 class MinMax(Player):
     '''Automatic player that uses a minimax pruned algorithm.'''
 
-    def __init__(self, make_move, board: Bd, game: Game, player: str, timeout: int):
+    def __init__(self, make_move, board: Bd, game: Game, player: str, timeout: int, depth_to_reach: int=None):
         ''' Create a local player
 
         Keyword arguments:
@@ -97,32 +97,42 @@ class MinMax(Player):
         player -- the player identification. Can be a number or anything else
         timeout -- the max time allowed for each move
         '''
-        if timeout <= 5:
+        if depth_to_reach is None and timeout <= 5:
             raise ValueError('Timeout should be higher than 5')
 
         logging.info(f'MinMax timeout {timeout}')
 
         super(MinMax, self).__init__(make_move, board, game, player)
         self.timeout = timeout
+        
+        self.depth_to_reach = depth_to_reach
         self.timeout_event = Event()
+        self.id_ended = Event()
         self.cached_moves = []
 
     def next_action(self, last_action: Action, state_history: list[State]):
         """Start a monitored thread for the next action."""
         self.cached_moves.clear()
         self.timeout_event.clear()
+        self.id_ended.clear()
 
         thread = Thread(
             target=self._iterative_deepening,
-            args=(last_action,))
+            args=(last_action, self.depth_to_reach))
 
         thread.start()
         # Wait for the thread
-        thread.join(self.timeout / 1000)
+        if self.timeout is not None:
+            thread.join(self.timeout / 1000)
+        else:
+            thread.join()
         logging.info(f'Timeout triggered')
 
         # Kill the thread
         self.timeout_event.set()
+
+        # Wait until is actually ended
+        self.id_ended.wait()
 
         # Make last cached move
         if random.random() > 0.9:
@@ -135,15 +145,21 @@ class MinMax(Player):
         else:
             self.make_move(self.cached_moves[-1])
 
-    def _iterative_deepening(self, last_action: Action):
+    def _iterative_deepening(self, last_action: Action, max_depth: int=5):
         """Perform interative deepening."""
-        try:
-            depth = 1
-            while True:
-                self._next_action_cutoff(last_action, cutoff_depth(depth))
-                depth += 1
-        except TimeoutError:
-            return
+        depth = 1
+        while max_depth is None or depth < max_depth:
+            try:
+                while max_depth is None or depth < max_depth:
+                    self._next_action_cutoff(last_action, cutoff_depth(depth))
+                    depth += 1
+                break
+            except TimeoutError:
+                print(f"MinMax reached depth {depth}")
+                if max_depth is None:
+                    break
+        self.id_ended.set()
+
 
     def _next_action_cutoff(self, last_action: Action, cutoff: Callable[[Game, State, int], bool]):
         """Calculate and cache the best action with the given cutoff.

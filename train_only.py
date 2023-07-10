@@ -7,12 +7,15 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
-from games.tablut.players.alpha_zero import Model
+# os.environ['CUDA_DEVICE_ORDER'] = "PCI_BUS_ID"
+# os.environ['CUDA_VISIBLE_DEVICES'] = ""
+
+from games.tictactoe.players.alpha_zero import Model
 
 
 def main():
     model = Model()
-    model.train_model(epochs=1, step_for_epoch=1700, batch_size=128)
+    model.train_model(epochs=2, step_for_epoch=2000, batch_size=128)
     model.save_model()
 
 

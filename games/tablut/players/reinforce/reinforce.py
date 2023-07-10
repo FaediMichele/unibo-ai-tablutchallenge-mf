@@ -9,9 +9,10 @@ import datetime
 import random
 import logging
 from typing import Union
+import numpy as np
 
 class Reinforce(Player):
-    ''' Player that take random actions '''
+    ''' Player that learn to play using REINFORCE ALGORITHM'''
 
     def __init__(self, make_move: Callable[[Union[None, State, Action]], None],
                  board: Board,
@@ -32,7 +33,8 @@ class Reinforce(Player):
         self.game = game
         self.player = player
         self.cache = []
-        self.tree = None
+        self.tmp = []
+        self.tmp2 = []
         self.training = training
         self.model = model
         super(Player, self).__init__()
@@ -51,6 +53,8 @@ class Reinforce(Player):
         if self.training:
             # the if is true when the model assign 0 probability to all
             # possible moves
+            self.tmp.append(np.max(policy) - np.mean(policy))
+            self.tmp2.append(np.sum(policy))
             if sum(policy) < 0.001:
                 action_taken = random.choices(actions)[0]
             else:
@@ -73,6 +77,7 @@ class Reinforce(Player):
         winning -- the winning player
         """
         logging.info(f'Calling win on {Player}, winning: {winner}')
+        print(f"AVG max - mean: {sum(self.tmp) / len(self.tmp):.5f}. AVG correct actions probability: {sum(self.tmp2) / len(self.tmp2)}")
         if self.training:
             if winner == 'draw':
                 g = 0
@@ -95,13 +100,12 @@ class Reinforce(Player):
     def _evaluate_state(self, state: State, actions: list[Action],
                         state_history: list[State],
                         return_state_transformed=False) -> tuple[list[float], float]:
+        """evaluate state value and policy. if the state is terminal return the final reward"""
         if self.game.is_terminal(state):
             if state[2] >= 0:
                 state_value = 0
-            elif state[0] == self.player:
-                state_value = -1
             else:
-                state_value = 1
+                state_value = -1
 
             if return_state_transformed:
                 return [], state_value, self._transform(state, state_history)
@@ -118,6 +122,7 @@ class Reinforce(Player):
             return policy, state_value
 
     def _transform(self, state: State, state_history: list[State]) -> tf.Tensor:
+        """Transform the game board into a model input"""
         player, board, _ = state
         boards = [sh[1] for sh in state_history[-PREVIOUS_STATE_TO_MODEL - 1:]]
         while len(boards) <= PREVIOUS_STATE_TO_MODEL:

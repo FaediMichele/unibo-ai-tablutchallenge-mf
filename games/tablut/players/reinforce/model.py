@@ -14,13 +14,21 @@ import random
 from more_itertools import ichunked
 import requests
 import fcntl
-from typing import Union
+import shutil
+from typing import Callable, Union, Any
 
 from .util import boolean_mask_from_coordinates, no_repetition_actions, correct_actions, actions_to_indexes, PREVIOUS_STATE_TO_MODEL, SAVE_ITERATIONS, BOARD_SIZE
-
+OLD_MODEL_SAVED = 10
 
 class Model:
-    def __init__(self, path: str=None, remote=False, server_url="http://0.0.0.0:6000", train_no_repetition=True) -> None:
+    '''Model container with utility function pertaining the model perdiction and training'''
+    def __init__(self, path: str=None, old_model: bool=False, remote=False, server_url="http://0.0.0.0:6000", train_no_repetition=False) -> None:
+        '''
+        path : path that contains all the data for the model. such as keras model, model backup, cache, stats file
+        old_model : flag to load an old version of the model
+        remote : flag to send prediction and train episode to an http server
+        server_url : url of the http server
+        '''
         if path is None:
             path = f'models/{"" if BOARD_SIZE == 9 else "simple_"}reinforce'
         self.model: keras.Model = None
@@ -30,14 +38,16 @@ class Model:
         self.remote = remote
         self.train_no_repetition = train_no_repetition
         self.server_url = server_url
+        self.old_model = old_model
         if not remote:
-            self.load_model()
+            self.load_model(old_model)
 
-    def load_model(self):
+    def load_model(self, old_model: bool):
+        '''Load from memory a keras model'''
         if self.optimizer is None:
-            self.optimizer = keras.optimizers.Adam(learning_rate=1e-4)
+            self.optimizer = keras.optimizers.Adam(learning_rate=1e-8)
 
-        model_path = self.get_last_model_path()
+        model_path = self.get_last_model_path(old_model)
         if model_path is not None:
             model = keras.models.load_model(model_path, compile=False)
         else:
@@ -45,6 +55,8 @@ class Model:
         self.model = model
 
     def save_model(self, path: str=None):
+        '''Save model to memory - also save a backup of the model '''
+
         # on remote the model file is managed by the server
         if self.remote:
             return
@@ -53,6 +65,18 @@ class Model:
             path = self.path
         config = self.load_config_file()
         current_model_path = os.path.join(path, config['current'])
+
+
+        for k in reversed(range(OLD_MODEL_SAVED)):
+            old_model_path = os.path.join(path, f"old_model_-{k}")
+            if os.path.isdir(old_model_path):
+                if k == OLD_MODEL_SAVED - 1:
+                    shutil.rmtree(old_model_path)
+                else:
+                    os.rename(old_model_path, os.path.join(path, f"old_model_-{k + 1}"))
+        if os.path.isdir(current_model_path):
+            os.rename(current_model_path, os.path.join(path, "old_model_-0"))
+
         self.model.save(current_model_path, save_format='tf')
         if len(config['wins']) in SAVE_ITERATIONS:
             self.model.save(os.path.join(path,
@@ -71,6 +95,7 @@ class Model:
         self.save_config_file(config)
 
     def load_config_file(self) -> dict:
+        '''Load or create a file containing the self play results'''
         config_path = os.path.join(self.path, 'config.json')
         
         if os.path.isfile(config_path):
@@ -88,18 +113,19 @@ class Model:
             return config
         
     def save_config_file(self, config: dict):
+        '''Save the file containing the self play results'''
         config_path = os.path.join(self.path, 'config.json')
         self.sync_file_op(config_path, "w", lambda f: json.dump(config, f, indent=4))
     
-
-    
     def player_wins(self, player: str, remaining_moves: int):
+        '''Update the stats file with a new episode result'''
         config = self.load_config_file()
         config['wins'].append(f"{player}-{-remaining_moves}")
         self.save_config_file(config)
 
 
     def predict(self, data):
+        '''Predict using the keras model or send the prediction to the http server'''
         data = tf.expand_dims(data, axis=0)
         if self.remote:
             value, policy = self.send_predict(data)
@@ -117,35 +143,49 @@ class Model:
         return value[0], policy
     
     def send_train_remote(self, data):
+        '''Send train message and data to the http server'''
         post_response = requests.post(f"{self.server_url}/train_episode?model_path={self.path}",
                                       data=pickle.dumps(data))
         if post_response.status_code not in [200, 202]:
             raise Exception(post_response.text)
         
     def send_predict(self, data):
+        '''Send predict message and data to the http server'''
         post_data = {
             'model_path': self.path,
-            'data': data.numpy().tolist()
+            'data': data.numpy().tolist(),
+            'old_model': self.old_model
         }
         headers = {'Content-Type': 'application/json'}
-        post_response = requests.post(f"{self.server_url}/predict",
-                                      data=json.dumps(post_data),
-                                      headers=headers)
-        if post_response.status_code != 200:
-            raise Exception(post_response.text)
-        state_value, policy = pickle.loads(post_response.content)
+        retry = 0
+        while retry < 1000:
+            try:
+                post_response = requests.post(f"{self.server_url}/predict",
+                                              data=json.dumps(post_data),
+                                              headers=headers)
+                if post_response.status_code != 200:
+                    raise Exception(post_response.text)
+                state_value, policy = pickle.loads(post_response.content)
+                break
+            except Exception as e:
+                print(str(e))
+                time.sleep(1)
+                retry += 1
 
         return state_value, policy
 
+    
     def loss_fn(self, states, z, v_pred, p_pred, actions_tensor):
+        '''Loss of REINFORCE'''
         # The d value must not be optimized, is considered as a constant
         d = tf.stop_gradient(z - v_pred)
         state_value_loss = -tf.reduce_mean(v_pred * d)
+
+        mse = tf.reduce_mean(tf.keras.metrics.mean_squared_error(z, v_pred))
         
         # shape = batch, height x width x (height + width (orthogonal slide))
         p_pred_flat = tf.reshape(p_pred, [p_pred.shape[0], BOARD_SIZE * BOARD_SIZE * BOARD_SIZE * 2])
         p_pred_flat = tf.nn.log_softmax(p_pred_flat, axis=1)
-        # p_pred_flat = tf.math.log(tf.nn.softmax(p_pred_flat, axis=1) + 1e-15)
         p_softmax = tf.reshape(p_pred_flat, [p_pred.shape[0], BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2])
 
         r = tf.expand_dims(tf.range(actions_tensor.shape[0]), axis=1)
@@ -158,22 +198,23 @@ class Model:
         if self.train_no_repetition:
             action_repeated = [no_repetition_actions(states[idx]) for idx in range(z.shape[0])]
             mask = boolean_mask_from_coordinates(action_repeated)
-            repeated_actions = tf.boolean_mask(p_softmax, mask)
+            repeated_actions = tf.reduce_sum(tf.boolean_mask(p_softmax, mask))
 
             actions_correct = [correct_actions(states[idx]) for idx in range(z.shape[0])]
             mask_actions_correct = boolean_mask_from_coordinates(actions_correct, positives=False)
-            not_actions_correct = tf.boolean_mask(p_softmax, mask_actions_correct)
+            not_actions_correct = tf.reduce_sum(tf.boolean_mask(p_softmax, mask_actions_correct))
 
-            return state_value_loss + policy_loss + repeated_actions + not_actions_correct, policy_loss, state_value_loss, tf.reduce_mean(d)
+            return state_value_loss + policy_loss + repeated_actions + not_actions_correct, policy_loss, state_value_loss, mse
         else:
-            return state_value_loss + policy_loss, policy_loss, state_value_loss, tf.reduce_mean(d)
+            return state_value_loss + policy_loss, policy_loss, state_value_loss, mse
         
-
         
     
     
     def train_episode(self, state_action_z: list[tuple[tf.Tensor, Action, float]], batch_size:int=32) -> float:
-        
+        '''Train the model with the data of a single episode.
+        DEPRECATED. it is better to play some episodes and then call train_model:
+        it shuffle the data causing a faster convergence'''
         if self.remote:
             self.send_train_remote(state_action_z)
             return
@@ -192,21 +233,19 @@ class Model:
                 p_loss, v_loss, d_loss = self.train_batch(states_batch,
                                                           actions_batch,
                                                           z_batch)
-                p_sum += p_loss
-                v_sum += v_loss
-                d_sum += d_loss
+                p_sum += float(p_loss.numpy())
+                v_sum += float(v_loss.numpy())
+                d_sum += float(d_loss.numpy())
                 pbar.set_description(f"Value Loss: {v_sum / (k + 1):.5e}, "
                                      f"Policy loss: {p_sum / (k + 1):.5e}, "
                                      f"D value: {d_sum / (k + 1):.5e}")
                 pbar.update()
-    
-    
-
 
     def train_model(self,
                     batch_size: int=32,
                     step_for_epoch: int=30,
                     epochs: int=1):
+        '''Train the model with previouslt stored data'''
 
         last_samples = self.get_last_samples(step_for_epoch)
         data = []
@@ -226,9 +265,9 @@ class Model:
                     p_loss, v_loss, d_loss = self.train_batch(states_batch,
                                                               actions_batch,
                                                               zs_batch)
-                    p_sum += p_loss
-                    v_sum += v_loss
-                    d_sum += d_loss
+                    p_sum += float(p_loss)
+                    v_sum += float(v_loss)
+                    d_sum += float(d_loss)
                     pbar.set_description(f"Value Loss: {v_sum / (k + 1):.5e}, "
                                         f"Policy loss: {p_sum / (k + 1):.5e}, "
                                         f"D value: {d_sum / (k + 1):.5e}")
@@ -238,25 +277,31 @@ class Model:
 
     def train_batch(self, states: list[tf.Tensor], actions: list[Action],
                     z: list[float]):
+        '''Compute the loss and update the weights with the data for a single batch.
+        '''
         states_batch = tf.stack(states)
         z_batch = tf.constant(z, shape=(len(z), 1), dtype=tf.float32)
         actions_tensor = tf.constant(actions_to_indexes(actions))
         with tf.GradientTape() as tape:
             v_pred, p_pred = self.model(states_batch, training=True)
             loss, policy_loss, state_value_loss, d_loss = self.loss_fn(states_batch,
-                                                               z_batch,
-                                                               v_pred,
-                                                               p_pred,
-                                                               actions_tensor)
-        
-        grads = tape.gradient(loss, self.model.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+                                                            z_batch,
+                                                            v_pred,
+                                                            p_pred,
+                                                            actions_tensor)
+            
+            grads = tape.gradient(loss, self.model.trainable_weights)
+            self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
+
         return policy_loss, state_value_loss, d_loss
 
-    def get_last_samples(self, number_of_games: int=1000
-                         ) -> tuple[list[tf.Tensor],
-                                    list[tf.Tensor],
-                                    list[tf.Tensor]]:
+    def get_last_samples(self, number_of_games: int=1000,
+                         max_episode_length: int=100
+                         ) -> list[tuple[tf.Tensor, tf.Tensor], float]:
+        ''' Load from disk the data of previos matches.
+        
+        number_of_samples : number of episode to load from memory
+        max_episode_length : load episode the match no longer than this value (load some longer matches with score -0.1)'''
         file_indexes = []
         for filename in os.listdir(self.path):
             if filename.startswith("cache_") and filename.endswith(".pickle"):
@@ -266,40 +311,53 @@ class Model:
                 except ValueError:
                     pass  # Ignore non-integer filenames
 
-        
         data_loaded = []
         for filename, _ in sorted(file_indexes, key=lambda x: x[1],
                                   reverse=True):
             
             file_games = self.sync_file_op(os.path.join(self.path, filename), "rb",
                                            lambda f: pickle.load(f))
-            data_loaded.extend(file_games)
+            for state_action, z in file_games:
+                if len(state_action) < max_episode_length:
+                    data_loaded.append((state_action, z))
+                elif len(state_action) < max_episode_length * 1.2:
+                    data_loaded.append((state_action[:max_episode_length], -0.1))
             if len(data_loaded) >= number_of_games:
                 data_loaded = data_loaded[:number_of_games]
                 break
             print(filename)
         return data_loaded
     
+    def get_last_model_path(self, old_model: bool) -> Union[str, None]:
+        '''Get the path of the model to use.
 
-    def sample(self, samples: tuple, final_size: float) -> tuple:
-        states, zs = samples
-        num_element = int(states.shape[0] * final_size)
-        sum_prob = states.shape[0] * (states.shape[0] + 1) / 2
-        choiches = np.random.choice(range(0, states.shape[0]), num_element,
-                         p=[i/sum_prob for i in range(1, states.shape[0]+1)])
-        mask = [i in choiches for i in range(0, states.shape[0])]
-        return (tf.boolean_mask(states, mask),
-                tf.boolean_mask(zs, mask))
-    
-    def get_last_model_path(self) -> Union[str, None]:
+        old_model : flag to load an old model
+        '''
         config = self.load_config_file()
+
+        if old_model:
+            for k in reversed(range(OLD_MODEL_SAVED + 1)):
+                old_model_path = os.path.join(self.path, f"old_model_-{k}")
+                if os.path.isdir(old_model_path):
+                    return old_model_path
+
         current_model_path = os.path.join(self.path, config['current'])
         if os.path.isdir(current_model_path):
             return current_model_path
         return None
         
 
-    def sync_file_op(self, file_path, mode, func,  retry_time=0.01):
+    def sync_file_op(self, file_path: str,
+                     mode: str,
+                     func: Callable[[Any], Any], 
+                     retry_time: float=0.01):
+        '''Operation on a file in a sync way with concurrent processes.
+        work only on LINUX (see fcntl)
+        
+        file_path : path to lock the file
+        mode : flag for open function ('r', 'w', 'rb', 'wb', ...)
+        retry_time : seconds to wait to retry the lock
+        '''
         while True:
             try:
                 with open(file_path, mode) as f:
@@ -316,6 +374,10 @@ class Model:
 
     def save_cache(self, cache: list[tuple[tf.Tensor, float]],
                    cache_mb_size:int=20):
+        '''Save data of a episode to memory
+        
+        cache_md_size : if a file is bigger than this value in mbyte the data is saved in another file
+        '''
         # Made with ChatGPT ;)
         # Find the latest cache file in the folder
         latest_cache_file = None
@@ -354,6 +416,7 @@ class Model:
 
 
     def create_model(self) -> keras.Model:
+        '''Create the keras model'''
         input_shape = (BOARD_SIZE, BOARD_SIZE, PREVIOUS_STATE_TO_MODEL + 2)
         policy_shape = (BOARD_SIZE, BOARD_SIZE, BOARD_SIZE * 2)
         
@@ -367,6 +430,7 @@ class Model:
         
 
     def create_policy_network(self, input_shape, policy_shape):
+        '''The policy network is a reg net y like network'''
         # Made with ChatGPT with few corrections ;)
         inputs = tf.keras.Input(shape=input_shape)
 
@@ -376,7 +440,7 @@ class Model:
         x = layers.ReLU()(x)
 
         # Main Blocks
-        num_blocks = 2  # Number of blocks in the network
+        num_blocks = 3  # Number of blocks in the network
         num_filters = 32  # Initial number of filters
 
         for i in range(num_blocks):
@@ -410,6 +474,7 @@ class Model:
         return tf.keras.Model(inputs=inputs, outputs=x)
 
     def create_value_network(self, input_shape):
+        '''The value network is a reg net y like network'''
         # Made with ChatGPT with few corrections ;)
         inputs = tf.keras.Input(shape=input_shape)
 

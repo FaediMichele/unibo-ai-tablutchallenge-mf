@@ -38,10 +38,11 @@ class Player:
         else:
             self.make_move(actions[random.randint(0, len(actions)-1)])
 
-    def end(self, last_action: Action, winning: str):
+    def end(self, last_action: Action, opponent, winner: str):
         """Called when a player wins.
 
         last_action -- the winning move
+        opponent -- The opponent player
         winning -- the winning player
         """
-        logging.info(f'Calling win on {self.player}, winning: {winning}')
+        logging.info(f'Calling win on {self.player}, winning: {winner}')
